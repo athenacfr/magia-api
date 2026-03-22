@@ -1,7 +1,7 @@
 # Spike Tasks
 
 **Spec**: `.specs/features/spike/spec.md`
-**Status**: Draft
+**Status**: Done
 
 ---
 
