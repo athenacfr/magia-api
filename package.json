@@ -30,6 +30,9 @@
       }
     }
   },
+  "bin": {
+    "magia-api": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
@@ -39,7 +42,6 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.94.4",
     "@types/node": "^25.5.0",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
@@ -54,6 +56,7 @@
     }
   },
   "dependencies": {
+    "@hey-api/openapi-ts": "^0.94.4",
     "jiti": "^2.6.1",
     "yaml": "^2.8.3"
   }
