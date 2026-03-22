@@ -13,3 +13,5 @@ export type {
   ManifestEntry,
   ParamLocation,
 } from './types'
+
+export { createMagia } from './proxy'
