@@ -15,3 +15,4 @@ export type {
 } from './types'
 
 export { createMagia } from './proxy'
+export { tanstackQuery } from './plugins/tanstack-query'

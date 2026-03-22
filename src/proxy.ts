@@ -1,4 +1,5 @@
 import type { Manifest, ManifestEntry, MagiaConfig, MagiaFetchOptions } from './types'
+import type { TanStackQueryPlugin } from './plugins/tanstack-query'
 
 // ---------------------------------------------------------------------------
 // URL construction
@@ -146,6 +147,7 @@ function createProxy(
   config: MagiaConfig,
   manifest: Manifest,
   path: string[],
+  plugins: TanStackQueryPlugin[],
 ): unknown {
   return new Proxy(() => {}, {
     get(_target, prop: string) {
@@ -162,8 +164,14 @@ function createProxy(
         return () => ['magia', path[0]] as const
       }
 
+      // Let plugins handle the property
+      for (const plugin of plugins) {
+        const result = plugin.extendProxy(path, prop, config, manifest)
+        if (result !== undefined) return result
+      }
+
       // Recurse deeper
-      return createProxy(config, manifest, [...path, prop])
+      return createProxy(config, manifest, [...path, prop], plugins)
     },
 
     apply() {
@@ -179,8 +187,9 @@ function createProxy(
 export function createMagia(
   config: MagiaConfig,
   manifest: Manifest,
+  plugins: TanStackQueryPlugin[] = [],
 ): MagiaClient {
-  return createProxy(config, manifest, []) as MagiaClient
+  return createProxy(config, manifest, [], plugins) as MagiaClient
 }
 
 // Re-export for internal use by plugins
