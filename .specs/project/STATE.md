@@ -55,6 +55,8 @@
 | D-049 | MIT license | Standard open source license. | 2026-03-22 |
 | D-050 | Start with a spike: hard-coded Proxy + manifest for petstore before building full codegen | Validate DX feels right before investing in the pipeline. | 2026-03-22 |
 | D-051 | `.d.ts` path: configurable via `dtsPath` in defineConfig. Default: `src/magia-api.d.ts` if `src/` exists, else `magia-api.d.ts` in project root. | Smart default covers most projects. Configurable for non-standard layouts. | 2026-03-22 |
+| D-052 | v1.0 scope: REST only, CLI + Vite plugin, TQ plugin, basic watch. No GraphQL, no typed errors, no testing utils, no SSE, no file uploads, no data transformers. | Ship a usable product fast. GraphQL + advanced features → v1.1. | 2026-03-22 |
+| D-053 | Use native fetch in runtime proxy instead of @hey-api/client-fetch | @hey-api/client-fetch is deprecated (bundled into openapi-ts). Native fetch is simpler. Reassess when building interceptors. | 2026-03-22 |
 
 ## Research Findings
 
