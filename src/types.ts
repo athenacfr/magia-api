@@ -96,6 +96,44 @@ export interface MagiaTanStackInfiniteQuery<TInput, TOutput> {
 }
 
 // ---------------------------------------------------------------------------
+// defineConfig types (compile-time — magia-api.config.ts)
+// ---------------------------------------------------------------------------
+
+export interface SchemaScript {
+  command: string
+  output: string
+}
+
+export type SchemaSource =
+  | string                          // URL or local file path
+  | (() => Promise<string>)         // async function returning schema text
+  | SchemaScript                    // shell command + output file
+
+interface BaseApiDefConfig {
+  schema: SchemaSource
+  plugins?: MagiaPlugin[]
+  schemaWatch?: boolean
+  schemaCache?: 'disabled' | { ttl: string }
+  operationName?: (method: string, path: string, operationId?: string) => string
+}
+
+export interface RestApiDefConfig extends BaseApiDefConfig {
+  type: 'rest'
+}
+
+export interface GraphQLApiDefConfig extends BaseApiDefConfig {
+  type: 'graphql'
+  documents: string | string[]
+}
+
+export type ApiDefConfig = RestApiDefConfig | GraphQLApiDefConfig
+
+export interface DefineConfigInput {
+  apis: Record<string, ApiDefConfig>
+  dtsPath?: string
+}
+
+// ---------------------------------------------------------------------------
 // Client interface (empty — augmented by generated .d.ts)
 // ---------------------------------------------------------------------------
 
