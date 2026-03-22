@@ -45,13 +45,18 @@
     "@types/node": "^25.5.0",
     "tsup": "^8.4.0",
     "typescript": "^5.7.0",
+    "vite": "^8.0.1",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@tanstack/react-query": ">=5.0.0"
+    "@tanstack/react-query": ">=5.0.0",
+    "vite": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "@tanstack/react-query": {
+      "optional": true
+    },
+    "vite": {
       "optional": true
     }
   },
