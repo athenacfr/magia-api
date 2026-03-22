@@ -32,3 +32,11 @@ export { defineConfig } from './config'
 export { createMagia } from './proxy'
 export { tanstackQuery } from './plugins/tanstack-query'
 export { findConfigFile, loadConfig, resolveConfig } from './loader'
+export {
+  resolveSchema,
+  classifySource,
+  isLocalUrl,
+  getSchemaEnvOverride,
+  getSchemaDefaults,
+} from './schema'
+export type { SchemaSourceKind, SchemaDefaults, ResolveSchemaOptions } from './schema'
