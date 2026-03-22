@@ -1,2 +1,113 @@
-// Core types — placeholder, filled in T2
-export {}
+// ---------------------------------------------------------------------------
+// Manifest (internal — describes operations for the Proxy)
+// ---------------------------------------------------------------------------
+
+export type ParamLocation = 'path' | 'query' | 'body'
+
+export interface ManifestEntry {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  path: string // e.g. "/pet/{petId}"
+  params: Record<string, ParamLocation>
+}
+
+export type Manifest = Record<string, Record<string, ManifestEntry>>
+//                           ^ api name     ^ operation name
+
+// ---------------------------------------------------------------------------
+// Fetch options & response
+// ---------------------------------------------------------------------------
+
+export interface MagiaFetchOptions {
+  signal?: AbortSignal
+  raw?: boolean
+  query?: Record<string, unknown>
+  headers?: Record<string, string>
+}
+
+export interface MagiaRawResponse<T> {
+  data: T
+  headers: Headers
+  status: number
+}
+
+// ---------------------------------------------------------------------------
+// Operation types (used in .d.ts augmentation)
+// ---------------------------------------------------------------------------
+
+export interface MagiaOperation<TInput, TOutput, TErrors = {}> {
+  fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>
+  fetch(
+    input: TInput,
+    opts: MagiaFetchOptions & { raw: true },
+  ): Promise<MagiaRawResponse<TOutput>>
+}
+
+export interface MagiaMutation<TInput, TOutput, TErrors = {}> {
+  fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>
+}
+
+// ---------------------------------------------------------------------------
+// TanStack Query plugin types (used in .d.ts augmentation)
+// ---------------------------------------------------------------------------
+
+export interface MagiaTanStackQuery<TInput, TOutput> {
+  queryOptions(
+    input: TInput,
+    opts?: { signal?: AbortSignal },
+  ): {
+    queryKey: readonly ['magia', string, string, TInput?]
+    queryFn: (ctx: { signal: AbortSignal }) => Promise<TOutput>
+  }
+  queryKey(input?: TInput): readonly ['magia', string, string, TInput?]
+}
+
+export interface MagiaTanStackMutation<TInput, TOutput> {
+  mutationOptions(opts?: {
+    onSuccess?: (data: TOutput, variables: TInput) => void
+    onError?: (error: Error, variables: TInput) => void
+  }): {
+    mutationFn: (input: TInput) => Promise<TOutput>
+    mutationKey: readonly ['magia', string, string]
+  }
+  mutationKey(): readonly ['magia', string, string]
+}
+
+export interface MagiaTanStackInfiniteQuery<TInput, TOutput> {
+  infiniteQueryOptions(
+    input: TInput,
+    opts?: { getNextPageParam?: (lastPage: TOutput) => unknown },
+  ): {
+    queryKey: readonly ['magia', string, string, TInput?]
+    queryFn: (ctx: {
+      signal: AbortSignal
+      pageParam: unknown
+    }) => Promise<TOutput>
+    getNextPageParam?: (lastPage: TOutput) => unknown
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Client interface (empty — augmented by generated .d.ts)
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface MagiaClient {}
+
+// ---------------------------------------------------------------------------
+// createMagia config
+// ---------------------------------------------------------------------------
+
+export interface MagiaApiConfig {
+  baseUrl: string
+  fetchOptions?: {
+    headers?:
+      | Record<string, string>
+      | (() => Record<string, string>)
+      | (() => Promise<Record<string, string>>)
+  }
+}
+
+export interface MagiaConfig {
+  apis: Record<string, MagiaApiConfig>
+  onError?: (error: Error) => void
+}

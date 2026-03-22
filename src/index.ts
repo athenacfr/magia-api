@@ -1,1 +1,15 @@
-export type {} from './types'
+export type {
+  MagiaClient,
+  MagiaConfig,
+  MagiaApiConfig,
+  MagiaFetchOptions,
+  MagiaRawResponse,
+  MagiaOperation,
+  MagiaMutation,
+  MagiaTanStackQuery,
+  MagiaTanStackMutation,
+  MagiaTanStackInfiniteQuery,
+  Manifest,
+  ManifestEntry,
+  ParamLocation,
+} from './types'
