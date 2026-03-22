@@ -566,19 +566,35 @@ const handlers = createMagiaHandlers(magia, {
 })
 ```
 
-## Priority Order
+## v1.0 Scope (REST only)
 
-1. **F-001** Config shape (blocks everything)
-2. **F-002** Schema resolution (blocks generation)
-3. **F-003** Codegen engine (blocks useful output)
-4. **F-004** Plugin system + tanstackQuery()
-5. **F-005** Runtime client / `createMagia()`
-6. **F-006** Type generation / `src/magia-api.d.ts`
-7. **F-013** Error handling (built into F-003/F-005/F-006)
-8. **F-007** CLI `generate` (blocks CI)
-9. **F-008** Vite plugin
-10. **F-009** Watch & incremental
-11. **F-014** Testing utilities
-12. **F-010** gql.tada exploration
-13. **F-011** CLI extras
-14. **F-012** Documentation
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **F-001** Config shape | Done | `defineConfig()`, config loader (jiti) |
+| **F-002** Schema resolution | Done | URL, file, async fn, script. Env override. Smart defaults. |
+| **F-003** Codegen engine | Done | REST only. Hey API types + manifest + .d.ts. |
+| **F-004** Plugin system | Done | `tanstackQuery()` compile-time in `defineConfig()`. |
+| **F-005** Runtime client | Done | Recursive Proxy, native fetch, flat param mapping. |
+| **F-006** Type generation | Done | `.d.ts` augmentation + `magia.gen.ts` manifest. |
+| **F-007** CLI `generate` | Done | Per-API filtering, timing. |
+| **F-008** Vite plugin | Done | Codegen on start, schema watching, HMR. |
+| **F-009** Watch (basic) | Done | Local file watch with debounce. |
+
+**v1.0 cuts**: No GraphQL, no typed errors, no SSE/subscriptions, no file uploads, no data transformers, no testing utilities, no incremental rebuilds.
+
+### Key v1 changes from original design
+
+- **Manifest**: Real file `src/magia.gen.ts` (TanStack Router-style), not virtual module. User imports it explicitly.
+- **Plugins**: Compile-time only in `defineConfig()`, not passed to `createMagia()`. Manifest carries plugin metadata.
+- **Runtime client**: Native `fetch` instead of `@hey-api/client-fetch` (deprecated).
+- **createMagia(config, manifest)**: Takes manifest explicitly. Works in Vite, Node, any bundler.
+
+## v1.1+ Priority Order
+
+1. **F-013** Error handling (MagiaError, typed errors, `.isError()`)
+2. **F-014** Testing utilities (`createTestMagia`, `mockOperation`)
+3. **F-003** GraphQL codegen (graphql-codegen integration)
+4. **F-009** Incremental/hash-based rebuilds
+5. **F-010** gql.tada exploration
+6. **F-011** CLI extras (`init`, `validate`)
+7. **F-012** Documentation

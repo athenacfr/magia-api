@@ -2,7 +2,7 @@
 
 ## Vision
 
-A unified, zero-ceremony API client generation layer. One config file, opinionated defaults, seamless Vite integration — generates typed REST (OpenAPI) and GraphQL clients without developers thinking about codegen. Zero visible generated files.
+A unified, zero-ceremony API client generation layer. One config file, opinionated defaults, seamless Vite integration — generates typed REST (OpenAPI) and GraphQL clients without developers thinking about codegen.
 
 ## Problem
 
@@ -19,22 +19,23 @@ Today, setting up typed API clients requires:
 **magia-api** is a Vite plugin + config layer that:
 1. Provides a single `magia-api.config.ts` with `defineConfig()` for all APIs
 2. Uses **Hey API** and **graphql-codegen** as internal SDKs (never exposed to users)
-3. Generates a **manifest** (operation registry) and a single **`.d.ts`** for type augmentation
+3. Generates `src/magia.gen.ts` (manifest + typed exports, gitignored) and `src/magia-api.d.ts` (type augmentation, gitignored)
 4. Wraps everything in a **typed Proxy** — `magia.<api>.<operation>.fetch()`
-5. Extends per-API capabilities via **plugins** (`tanstackQuery()`) + built-in SSE/subscriptions from spec
+5. Extends per-API capabilities via **plugins** (`tanstackQuery()`) configured at compile time in `defineConfig()`
 6. Runs codegen automatically via Vite plugin — no manual generation step
-7. **Zero visible generated files** — all internals hidden in `node_modules/.magia/`, one gitignored `.d.ts` in `src/`
+7. **Two gitignored files in `src/`**: `magia.gen.ts` (manifest) + `magia-api.d.ts` (types). Internals hidden in `node_modules/.magia/`
 
 ## Principles
 
 - **SDK-first**: Use Hey API and graphql-codegen internally. Never rewrite their logic. Never expose them to users.
 - **Opinionated by design**: magia picks the right codegen plugins. Users configure what APIs they have, not how codegen works.
-- **Zero visible files**: No `src/generated/` directory. One gitignored `.d.ts` in `src/`, everything else in `node_modules/.magia/`.
+- **Minimal generated files**: Two gitignored files in `src/`. Internals in `node_modules/.magia/`.
 - **Unified DX**: REST and GraphQL have identical API surface. `.fetch()`, `.subscribe()`, `.queryOptions()` work the same regardless of protocol.
 - **Single source of truth**: One config file defines all API connections.
 - **Invisible codegen**: The Vite plugin handles generation — developers write code, types appear.
-- **Runtime-first**: Base URLs configured at runtime via Vite's env system.
-- **Plugin architecture**: Base generates fetchers + SSE/subscriptions. Plugins extend (TanStack Query, etc.).
+- **Runtime-first**: Base URLs configured at runtime via env vars.
+- **Plugin architecture**: Plugins (`tanstackQuery()`) configured at compile time in `defineConfig()`, extend the runtime proxy via manifest metadata.
+- **Works everywhere**: `magia.gen.ts` is a real file — works in Vite, Node, any bundler. No virtual modules.
 
 ## Architecture
 
@@ -47,42 +48,68 @@ Today, setting up typed API clients requires:
 │  Hey API (internal)  │  graphql-codegen (int.)  │
 │  → types from spec   │  → types + documents     │
 ├──────────────────────┴──────────────────────────┤
-│  magia-api core                                 │
-│  → manifest.ts (bundled via Vite virtual module)│
+│  magia-api codegen                              │
+│  → src/magia.gen.ts (manifest, gitignored)      │
 │  → src/magia-api.d.ts (type augmentation)       │
-│  → Typed errors per operation                   │
-│  → AbortSignal support                          │
+│  → node_modules/.magia/ (internals, cache)      │
 ├─────────────────────────────────────────────────┤
 │  Core capabilities:                             │
-│  → .fetch() — REST + GraphQL                    │
-│  → .subscribe() — REST SSE + GraphQL subs       │
-│  → File uploads (auto-detected from spec)       │
-│  Plugins:                                       │
+│  → .fetch() — REST (v1) + GraphQL (v1.1)        │
+│  Plugins (compile-time, in defineConfig):       │
 │  → tanstackQuery(): queryOptions, queryKey,     │
 │    mutationOptions, infiniteQueryOptions        │
 ├─────────────────────────────────────────────────┤
-│  Runtime: createMagia() → Proxy object          │
-│  → REST: @hey-api/client-fetch                  │
-│  → GraphQL: graphql-request                     │
-│  → Manifest bundled via Vite virtual module     │
+│  Runtime: createMagia(config, manifest) → Proxy │
+│  → REST: native fetch                           │
 │  → Flat params auto-mapped from manifest        │
-│  → Same DX for both protocols                   │
+│  → Plugins activated from manifest metadata     │
 └─────────────────────────────────────────────────┘
 
 Package: single npm package `magia-api`
-  magia-api        → core (defineConfig, createMagia, tanstackQuery, MagiaError)
+  magia-api        → core (defineConfig, createMagia, tanstackQuery)
   magia-api/vite   → Vite plugin (magiaApi)
   magia-api/cli    → CLI (magia-api generate)
-  magia-api/test   → Testing utilities (createTestMagia, mockOperation)
+  magia-api/test   → Testing utilities (future)
 
-File layout:
-  src/magia-api.d.ts          ← gitignored, auto-generated
+File layout (user project):
+  magia-api.config.ts         ← user-authored config
+  src/magia.gen.ts            ← gitignored, auto-generated manifest
+  src/magia-api.d.ts          ← gitignored, auto-generated types
   node_modules/.magia/        ← hidden cache + internals
-    ├── manifest.ts           ← bundled via virtual:magia-manifest
-    ├── internals/            ← Hey API + codegen output
-    ├── transformers.ts       ← data transformers from spec
+    ├── internals/            ← Hey API type output per API
     ├── schemas/              ← cached remote schemas
-    └── checksums.json
+    └── checksums.json        ← change detection (future)
+```
+
+## User DX
+
+```typescript
+// magia-api.config.ts
+import { defineConfig, tanstackQuery } from 'magia-api'
+
+export default defineConfig({
+  apis: {
+    petstore: {
+      type: 'rest',
+      schema: 'https://petstore3.swagger.io/api/v3/openapi.json',
+      plugins: [tanstackQuery()],
+    },
+  },
+})
+
+// src/lib/magia.ts
+import { createMagia } from 'magia-api'
+import { manifest } from '../magia.gen'
+
+export const magia = createMagia({
+  apis: { petstore: { baseUrl: import.meta.env.VITE_PETSTORE_URL } },
+}, manifest)
+
+// src/components/PetList.tsx
+import { useQuery } from '@tanstack/react-query'
+import { magia } from '../lib/magia'
+
+const { data } = useQuery(magia.petstore.findPetsByStatus.queryOptions({ status: 'available' }))
 ```
 
 ## Target Users
@@ -96,14 +123,12 @@ File layout:
 - **Runtime**: TypeScript, Node.js
 - **Build (magia-api package)**: tsup
 - **Build (user project)**: Vite plugin
-- **REST runtime client** (internal): `@hey-api/client-fetch`
-- **GraphQL runtime client** (internal): `graphql-request`
+- **REST runtime client**: native `fetch` (v1)
 - **REST codegen** (internal): Hey API (`@hey-api/openapi-ts`, `@hey-api/typescript`)
-- **GraphQL codegen** (internal): graphql-codegen (`@graphql-codegen/core`, client-preset)
+- **GraphQL codegen** (internal, v1.1): graphql-codegen (`@graphql-codegen/core`, client-preset)
 - **Plugin: TanStack Query**: Option factories (queryOptions, mutationOptions, infiniteQueryOptions, queryKey)
-- **Core: SSE/Subscriptions**: AsyncIterable streaming with auto-reconnect (REST SSE auto-detected, GraphQL via graphql-request SSE transport)
-- **Core: File uploads**: Auto-detected from OpenAPI `multipart/form-data`, accepts `File`/`Blob`
-- **Data transformers**: Auto-deserialize from OpenAPI `format` fields
+- **Config loading**: jiti (TypeScript config files at runtime)
+- **Schema parsing**: yaml (YAML support), native JSON.parse
 - **Runtime proxy**: Recursive Proxy pattern (inspired by tRPC v11)
-- **Testing**: Vitest, `magia-api/test` utilities
+- **Testing**: Vitest
 - **Package manager**: pnpm
