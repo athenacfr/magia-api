@@ -2,6 +2,9 @@ export type {
   MagiaClient,
   MagiaConfig,
   MagiaApiConfig,
+  MagiaPlugin,
+  MagiaPluginOptions,
+  TanStackQueryPluginOptions,
   MagiaFetchOptions,
   MagiaRawResponse,
   MagiaOperation,
@@ -10,6 +13,7 @@ export type {
   MagiaTanStackMutation,
   MagiaTanStackInfiniteQuery,
   Manifest,
+  ManifestApi,
   ManifestEntry,
   ParamLocation,
 } from './types'

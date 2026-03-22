@@ -5,20 +5,23 @@ import type { Manifest, MagiaConfig } from '../types'
 
 const manifest: Manifest = {
   petstore: {
-    getPetById: {
-      method: 'GET',
-      path: '/pet/{petId}',
-      params: { petId: 'path' },
-    },
-    listPets: {
-      method: 'GET',
-      path: '/pet/findByStatus',
-      params: { status: 'query' },
-    },
-    createPet: {
-      method: 'POST',
-      path: '/pet',
-      params: { body: 'body' },
+    plugins: [tanstackQuery()],
+    operations: {
+      getPetById: {
+        method: 'GET',
+        path: '/pet/{petId}',
+        params: { petId: 'path' },
+      },
+      listPets: {
+        method: 'GET',
+        path: '/pet/findByStatus',
+        params: { status: 'query' },
+      },
+      createPet: {
+        method: 'POST',
+        path: '/pet',
+        params: { body: 'body' },
+      },
     },
   },
 }
@@ -52,8 +55,7 @@ describe('Integration: full DX flow', () => {
     const fetch = mockFetch({ id: 1, name: 'Rex', status: 'available' })
     globalThis.fetch = fetch
 
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
     const result = await magia.petstore.getPetById.fetch({ petId: 1 })
 
@@ -69,19 +71,14 @@ describe('Integration: full DX flow', () => {
     const fetch = mockFetch({ id: 1, name: 'Rex' })
     globalThis.fetch = fetch
 
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
     const opts = magia.petstore.getPetById.queryOptions({ petId: 1 })
 
-    // Shape check
     expect(opts).toHaveProperty('queryKey')
     expect(opts).toHaveProperty('queryFn')
-
-    // Key is hierarchical
     expect(opts.queryKey).toEqual(['magia', 'petstore', 'getPetById', { petId: 1 }])
 
-    // queryFn dispatches correctly
     const result = await opts.queryFn({ signal: new AbortController().signal })
     expect(result).toEqual({ id: 1, name: 'Rex' })
 
@@ -90,8 +87,7 @@ describe('Integration: full DX flow', () => {
   })
 
   it('queryKey returns hierarchical key', () => {
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
     expect(magia.petstore.getPetById.queryKey({ petId: 1 })).toEqual([
       'magia', 'petstore', 'getPetById', { petId: 1 },
@@ -107,8 +103,7 @@ describe('Integration: full DX flow', () => {
     const fetch = mockFetch({ id: 2, name: 'Buddy' })
     globalThis.fetch = fetch
 
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
     const opts = magia.petstore.createPet.mutationOptions()
 
@@ -126,8 +121,7 @@ describe('Integration: full DX flow', () => {
   })
 
   it('mutationKey returns correct tuple', () => {
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
     expect(magia.petstore.createPet.mutationKey()).toEqual([
       'magia', 'petstore', 'createPet',
@@ -135,9 +129,7 @@ describe('Integration: full DX flow', () => {
   })
 
   it('pathKey on API namespace returns correct tuple', () => {
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
-
+    const magia = createMagia(config, manifest) as any
     expect(magia.petstore.pathKey()).toEqual(['magia', 'petstore'])
   })
 
@@ -145,14 +137,11 @@ describe('Integration: full DX flow', () => {
     const fetch = mockFetch([{ id: 1, name: 'Rex' }])
     globalThis.fetch = fetch
 
-    const tq = tanstackQuery()
-    const magia = createMagia(config, manifest, [tq]) as any
+    const magia = createMagia(config, manifest) as any
 
-    // fetch works
     const result = await magia.petstore.listPets.fetch({ status: 'available' })
     expect(result).toEqual([{ id: 1, name: 'Rex' }])
 
-    // queryOptions works on same proxy
     const opts = magia.petstore.listPets.queryOptions({ status: 'available' })
     expect(opts.queryKey).toEqual(['magia', 'petstore', 'listPets', { status: 'available' }])
   })
@@ -162,8 +151,7 @@ describe('Integration: full DX flow', () => {
     globalThis.fetch = fetch
     const onError = vi.fn()
 
-    const tq = tanstackQuery()
-    const magia = createMagia({ ...config, onError }, manifest, [tq]) as any
+    const magia = createMagia({ ...config, onError }, manifest) as any
 
     await expect(
       magia.petstore.getPetById.fetch({ petId: 1 }),

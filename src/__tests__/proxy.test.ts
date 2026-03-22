@@ -4,25 +4,28 @@ import type { Manifest, MagiaConfig } from '../types'
 
 const manifest: Manifest = {
   petstore: {
-    getPetById: {
-      method: 'GET',
-      path: '/pet/{petId}',
-      params: { petId: 'path' },
-    },
-    listPets: {
-      method: 'GET',
-      path: '/pet/findByStatus',
-      params: { status: 'query' },
-    },
-    createPet: {
-      method: 'POST',
-      path: '/pet',
-      params: { body: 'body' },
-    },
-    deletePet: {
-      method: 'DELETE',
-      path: '/pet/{petId}',
-      params: { petId: 'path' },
+    plugins: [],
+    operations: {
+      getPetById: {
+        method: 'GET',
+        path: '/pet/{petId}',
+        params: { petId: 'path' },
+      },
+      listPets: {
+        method: 'GET',
+        path: '/pet/findByStatus',
+        params: { status: 'query' },
+      },
+      createPet: {
+        method: 'POST',
+        path: '/pet',
+        params: { body: 'body' },
+      },
+      deletePet: {
+        method: 'DELETE',
+        path: '/pet/{petId}',
+        params: { petId: 'path' },
+      },
     },
   },
 }
@@ -210,5 +213,15 @@ describe('createMagia Proxy', () => {
     expect(fetch).toHaveBeenCalledOnce()
     const [url] = fetch.mock.calls[0]
     expect(url).toBe('https://petstore.example.com/pet/findByStatus')
+  })
+
+  it('does NOT expose TQ methods when plugin not in manifest', () => {
+    const magia = createMagia(config, manifest) as any
+    // manifest has plugins: [] — no TQ
+    // .queryOptions recurses into another proxy level instead of returning a TQ function
+    // Calling it as a function should throw (it's a proxy, not the TQ queryOptions)
+    expect(() => magia.petstore.getPetById.queryOptions({ petId: 1 })).toThrow(
+      'Cannot call magia.petstore.getPetById.queryOptions directly',
+    )
   })
 })

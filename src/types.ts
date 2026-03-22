@@ -10,8 +10,17 @@ export interface ManifestEntry {
   params: Record<string, ParamLocation>
 }
 
-export type Manifest = Record<string, Record<string, ManifestEntry>>
-//                           ^ api name     ^ operation name
+export interface MagiaPlugin {
+  name: string
+}
+
+export interface ManifestApi {
+  plugins: MagiaPlugin[] // e.g. [tanstackQuery()] — set at compile time by defineConfig
+  operations: Record<string, ManifestEntry>
+}
+
+export type Manifest = Record<string, ManifestApi>
+//                           ^ api name
 
 // ---------------------------------------------------------------------------
 // Fetch options & response
@@ -107,7 +116,25 @@ export interface MagiaApiConfig {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Plugin options (runtime — passed to createMagia)
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface TanStackQueryPluginOptions {
+  // Future: global runtime options for TanStack Query plugin
+}
+
+export interface MagiaPluginOptions {
+  tanstackQuery?: TanStackQueryPluginOptions
+}
+
+// ---------------------------------------------------------------------------
+// createMagia config
+// ---------------------------------------------------------------------------
+
 export interface MagiaConfig {
   apis: Record<string, MagiaApiConfig>
+  plugins?: MagiaPluginOptions
   onError?: (error: Error) => void
 }

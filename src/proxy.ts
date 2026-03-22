@@ -1,5 +1,5 @@
 import type { Manifest, ManifestEntry, MagiaConfig, MagiaFetchOptions } from './types'
-import type { TanStackQueryPlugin } from './plugins/tanstack-query'
+import { resolveTanStackQueryProp } from './plugins/tanstack-query'
 
 // ---------------------------------------------------------------------------
 // URL construction
@@ -103,7 +103,7 @@ async function dispatch(
   const apiManifest = manifest[apiName]
   if (!apiManifest) throw new Error(`Unknown API: ${apiName}`)
 
-  const entry = apiManifest[operationName]
+  const entry = apiManifest.operations[operationName]
   if (!entry) throw new Error(`Unknown operation: ${apiName}.${operationName}`)
 
   const apiConfig = config.apis[apiName]
@@ -147,7 +147,6 @@ function createProxy(
   config: MagiaConfig,
   manifest: Manifest,
   path: string[],
-  plugins: TanStackQueryPlugin[],
 ): unknown {
   return new Proxy(() => {}, {
     get(_target, prop: string) {
@@ -164,14 +163,18 @@ function createProxy(
         return () => ['magia', path[0]] as const
       }
 
-      // Let plugins handle the property
-      for (const plugin of plugins) {
-        const result = plugin.extendProxy(path, prop, config, manifest)
-        if (result !== undefined) return result
+      // Plugin: tanstackQuery — check manifest for plugin activation
+      if (path.length >= 1) {
+        const apiName = path[0]
+        const apiManifest = manifest[apiName]
+        if (apiManifest?.plugins.some(p => p.name === 'tanstackQuery')) {
+          const result = resolveTanStackQueryProp(path, prop, config, manifest)
+          if (result !== undefined) return result
+        }
       }
 
       // Recurse deeper
-      return createProxy(config, manifest, [...path, prop], plugins)
+      return createProxy(config, manifest, [...path, prop])
     },
 
     apply() {
@@ -187,9 +190,8 @@ function createProxy(
 export function createMagia(
   config: MagiaConfig,
   manifest: Manifest,
-  plugins: TanStackQueryPlugin[] = [],
 ): MagiaClient {
-  return createProxy(config, manifest, [], plugins) as MagiaClient
+  return createProxy(config, manifest, []) as MagiaClient
 }
 
 // Re-export for internal use by plugins
