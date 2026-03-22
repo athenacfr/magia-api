@@ -228,10 +228,13 @@ describe('generate (full pipeline)', () => {
     // No errors
     expect(result.errors).toHaveLength(0)
 
-    // Manifest generated
+    // Manifest generated at src/magia.gen.ts
     expect(result.manifestPath).toBeTruthy()
+    expect(result.manifestPath).toContain('magia.gen.ts')
     expect(existsSync(result.manifestPath)).toBe(true)
     const manifestSource = readFileSync(result.manifestPath, 'utf-8')
+    expect(manifestSource).toContain("import type { Manifest } from 'magia-api'")
+    expect(manifestSource).toContain('export const manifest: Manifest')
     expect(manifestSource).toContain('"getPetById"')
     expect(manifestSource).toContain('"addPet"')
     expect(manifestSource).toContain('tanstackQuery')

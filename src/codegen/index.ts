@@ -1,9 +1,8 @@
 import { resolve, relative, dirname } from 'node:path'
 import { mkdir, writeFile, rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 
-import type { DefineConfigInput, RestApiDefConfig, MagiaPlugin } from '../types'
+import type { DefineConfigInput, MagiaPlugin } from '../types'
 import { resolveSchema } from '../schema'
 import { parseSpec } from './parser'
 import { extractOperations, type ExtractedOperation } from './extractor'
@@ -26,18 +25,21 @@ export interface GenerateResult {
 }
 
 /**
- * Resolve where the .d.ts file should be written.
+ * Resolve where generated files go in the user's source tree.
+ * Default: src/ if it exists, else project root.
  */
-function resolveDtsPath(cwd: string, config: DefineConfigInput): string {
-  if (config.dtsPath) {
-    return resolve(cwd, config.dtsPath)
-  }
-  // Default: src/magia-api.d.ts if src/ exists, else ./magia-api.d.ts
+function resolveGenDir(cwd: string): string {
   const srcDir = resolve(cwd, 'src')
-  if (existsSync(srcDir)) {
-    return resolve(srcDir, 'magia-api.d.ts')
-  }
-  return resolve(cwd, 'magia-api.d.ts')
+  return existsSync(srcDir) ? srcDir : cwd
+}
+
+function resolveDtsPath(cwd: string, config: DefineConfigInput): string {
+  if (config.dtsPath) return resolve(cwd, config.dtsPath)
+  return resolve(resolveGenDir(cwd), 'magia-api.d.ts')
+}
+
+function resolveManifestPath(cwd: string): string {
+  return resolve(resolveGenDir(cwd), 'magia.gen.ts')
 }
 
 /**
@@ -141,15 +143,15 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     }
   }
 
-  // 7. Generate manifest
+  // 7. Generate magia.gen.ts (manifest) in user's src/
   if (Object.keys(manifestApis).length > 0) {
     const manifestSource = generateManifestSource(manifestApis)
-    const manifestPath = resolve(outputDir, 'manifest.ts')
+    const manifestPath = resolveManifestPath(cwd)
     await atomicWrite(manifestPath, manifestSource)
     result.manifestPath = manifestPath
   }
 
-  // 8. Generate .d.ts
+  // 8. Generate magia-api.d.ts (type augmentation) in user's src/
   if (Object.keys(dtsApis).length > 0) {
     const dtsSource = generateDts(dtsApis)
     const dtsPath = resolveDtsPath(cwd, opts.config)

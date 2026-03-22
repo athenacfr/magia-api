@@ -1,24 +1,20 @@
 import type { Plugin, ViteDevServer } from 'vite'
-import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { watch } from 'node:fs'
 import { resolveConfig } from './loader'
 import { generate } from './codegen/index'
 import { classifySource } from './schema'
-import type { DefineConfigInput, RestApiDefConfig } from './types'
-
-const VIRTUAL_MODULE_ID = 'virtual:magia-manifest'
-const RESOLVED_VIRTUAL_ID = '\0' + VIRTUAL_MODULE_ID
+import type { DefineConfigInput } from './types'
 
 /**
  * Vite plugin for magia-api.
  * - Triggers codegen on server start / build
- * - Resolves virtual:magia-manifest for runtime bundling
  * - Watches local schema files for changes (dev only)
+ * - Triggers HMR when manifest regenerates
  */
 export function magiaApi(): Plugin {
-  let manifestPath: string | null = null
   let server: ViteDevServer | null = null
+  let manifestPath: string | null = null
   const watchers: ReturnType<typeof watch>[] = []
 
   async function runGenerate(cwd: string, magiaConfig: DefineConfigInput, filter?: string[]) {
@@ -40,24 +36,6 @@ export function magiaApi(): Plugin {
   return {
     name: 'magia-api',
 
-    resolveId(id) {
-      if (id === VIRTUAL_MODULE_ID) {
-        return RESOLVED_VIRTUAL_ID
-      }
-    },
-
-    async load(id) {
-      if (id === RESOLVED_VIRTUAL_ID) {
-        if (!manifestPath) {
-          throw new Error(
-            'magia-api: manifest not generated yet. ' +
-            'Ensure configResolved hook ran successfully.',
-          )
-        }
-        return readFile(manifestPath, 'utf-8')
-      }
-    },
-
     configureServer(srv) {
       server = srv
     },
@@ -74,7 +52,6 @@ export function magiaApi(): Plugin {
         const opCount = Object.values(result.apis).reduce((sum, a) => sum + a.operations, 0)
         console.log(`[magia-api] Generated ${opCount} operations from ${apiCount} API(s)`)
 
-        // Watch local schema files in dev mode
         if (config.command === 'serve') {
           setupWatchers(cwd, magiaConfig)
         }
@@ -84,7 +61,6 @@ export function magiaApi(): Plugin {
     },
 
     async buildEnd() {
-      // Clean up watchers
       for (const w of watchers) {
         w.close()
       }
@@ -103,20 +79,17 @@ export function magiaApi(): Plugin {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
       const watcher = watch(schemaPath, () => {
-        // Debounce: wait 200ms after last change
         if (debounceTimer) clearTimeout(debounceTimer)
         debounceTimer = setTimeout(async () => {
           console.log(`[magia-api] Schema changed: ${apiName}, regenerating...`)
           try {
             await runGenerate(cwd, magiaConfig, [apiName])
 
-            // Invalidate virtual module to trigger HMR
+            // magia.gen.ts is in src/ — Vite watches src/ by default
+            // so HMR picks up the file change automatically
+            // Force full reload to ensure manifest is re-evaluated
             if (server) {
-              const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_ID)
-              if (mod) {
-                server.moduleGraph.invalidateModule(mod)
-                server.ws.send({ type: 'full-reload' })
-              }
+              server.ws.send({ type: 'full-reload' })
             }
           } catch (err) {
             console.error(`[magia-api] Regeneration failed:`, err instanceof Error ? err.message : err)
