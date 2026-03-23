@@ -114,3 +114,18 @@ const magia = createMagia({
 ```
 
 See [Error Handling](error-handling.md) for typed error details.
+
+## Shorthands
+
+Destructure API proxies for cleaner code:
+
+```typescript
+const { petstore, users } = magia.shorthands();
+
+// Use directly — fully typed
+const pet = await petstore.getPetById.fetch({ petId: 1 });
+const { data } = useQuery(petstore.getPetById.queryOptions({ petId: 1 }));
+queryClient.invalidateQueries({ queryKey: petstore.pathKey() });
+```
+
+Useful when a component only works with one API — avoids repeating `magia.` everywhere.

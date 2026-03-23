@@ -168,12 +168,14 @@ magia-api init                  # Scaffold config file
 ## Documentation
 
 - [Configuration](docs/configuration.md)
-- [Runtime Client](docs/runtime-client.md)
-- [Schema Resolution](docs/schema-resolution.md)
+- [Runtime Client](docs/runtime-client.md) (fetch, params, headers, shorthands)
+- [Schema Resolution](docs/schema-resolution.md) (sources, caching, incremental, diffing)
 - [TanStack Query Plugin](docs/plugins/tanstack-query.md)
 - [Error Handling](docs/error-handling.md)
+- [Testing](docs/testing.md) (`createTestMagia`, mocking, React Testing Library)
 - [CLI Reference](docs/cli.md)
 - [Bundler Plugins](docs/bundler-plugins.md) (Vite, Rollup, Webpack, esbuild)
+- [API Reference](docs/api-reference.md) (all exports, types, methods)
 
 ### Guides
 

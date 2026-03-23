@@ -88,3 +88,14 @@ magia-api generate --force
 ```
 
 Or delete `node_modules/.magia/checksums.json`.
+
+## Schema Diffing
+
+magia-api tracks operation names between generations. When operations are added or removed, the CLI and Vite plugin report the changes:
+
+```
+  petstore: 5 operations, +1 new, -2 removed
+    removed: deletePet, updatePet
+```
+
+This helps catch breaking changes when a backend schema is updated. Removed operations mean existing code may reference endpoints that no longer exist.
