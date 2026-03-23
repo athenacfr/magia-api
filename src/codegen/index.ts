@@ -24,9 +24,10 @@ export interface GenerateResult {
 
 /**
  * Resolve where magia.gen.ts goes.
- * Default: src/ if it exists, else project root.
+ * Respects config.output, otherwise defaults to src/magia.gen.ts if src/ exists.
  */
-function resolveGenFilePath(cwd: string): string {
+function resolveGenFilePath(cwd: string, config: DefineConfigInput): string {
+  if (config.output) return resolve(cwd, config.output)
   const srcDir = resolve(cwd, 'src')
   const dir = existsSync(srcDir) ? srcDir : cwd
   return resolve(dir, 'magia.gen.ts')
@@ -51,7 +52,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
   const outputDir = resolve(cwd, 'node_modules', '.magia')
   await mkdir(outputDir, { recursive: true })
 
-  const genFilePath = resolveGenFilePath(cwd)
+  const genFilePath = resolveGenFilePath(cwd, opts.config)
   const apiNames = opts.filter ?? Object.keys(opts.config.apis)
   const genApis: Record<string, {
     operations: ExtractedOperation[]

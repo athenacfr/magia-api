@@ -130,7 +130,8 @@ export type ApiDefConfig = RestApiDefConfig | GraphQLApiDefConfig
 
 export interface DefineConfigInput {
   apis: Record<string, ApiDefConfig>
-  dtsPath?: string
+  /** Path for generated magia.gen.ts. Default: src/magia.gen.ts if src/ exists, else ./magia.gen.ts */
+  output?: string
 }
 
 // ---------------------------------------------------------------------------

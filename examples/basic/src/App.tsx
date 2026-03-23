@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { magia } from './magia'
 
-
 function PetList() {
   const { data: pets, isLoading, error } = useQuery(
     magia.petstore.findPetsByStatus.queryOptions({ status: 'available' }),
@@ -21,7 +20,7 @@ function PetList() {
           </li>
         ))}
       </ul>
-      {pets&&pets?.length > 10 && <p>...and {pets.length - 10} more</p>}
+      {pets && pets.length > 10 && <p>...and {pets.length - 10} more</p>}
     </div>
   )
 }

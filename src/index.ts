@@ -1,42 +1,33 @@
+// Public API
+export { defineConfig } from './config'
+export { createMagia } from './proxy'
+export { tanstackQuery } from './plugins/tanstack-query'
+
+// Types — used in magia.gen.ts and user code
 export type {
-  // defineConfig types
+  // Config
   DefineConfigInput,
   ApiDefConfig,
   RestApiDefConfig,
   GraphQLApiDefConfig,
   SchemaSource,
   SchemaScript,
-  // Runtime types
+  // Runtime
   MagiaClient,
   MagiaConfig,
   MagiaApiConfig,
   MagiaPlugin,
-  MagiaPluginOptions,
-  TanStackQueryPluginOptions,
   MagiaFetchOptions,
   MagiaRawResponse,
-  // Operation types (.d.ts augmentation)
+  // Operation types (used in module augmentation)
   MagiaOperation,
   MagiaMutation,
   MagiaTanStackQuery,
   MagiaTanStackMutation,
   MagiaTanStackInfiniteQuery,
-  // Manifest (internal)
+  // Manifest (used in magia.gen.ts)
   Manifest,
   ManifestApi,
   ManifestEntry,
   ParamLocation,
 } from './types'
-
-export { defineConfig } from './config'
-export { createMagia } from './proxy'
-export { tanstackQuery } from './plugins/tanstack-query'
-export { findConfigFile, loadConfig, resolveConfig } from './loader'
-export {
-  resolveSchema,
-  classifySource,
-  isLocalUrl,
-  getSchemaEnvOverride,
-  getSchemaDefaults,
-} from './schema'
-export type { SchemaSourceKind, SchemaDefaults, ResolveSchemaOptions } from './schema'
