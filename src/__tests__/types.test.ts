@@ -3,7 +3,6 @@ import type {
   MagiaConfig,
   MagiaApiConfig,
   Manifest,
-  ManifestApi,
   MagiaOperation,
   MagiaMutation,
   MagiaTanStackQuery,

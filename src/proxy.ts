@@ -1,7 +1,7 @@
+import { ofetch, FetchError } from "ofetch";
 import type {
   Manifest,
   ManifestApi,
-  ManifestEntry,
   RestManifestEntry,
   GraphQLManifestEntry,
   LazyManifest,
@@ -152,9 +152,8 @@ async function dispatchRest(
     contentHeaders["Content-Type"] = "application/json";
   }
 
-  let response: Response;
   try {
-    response = await fetch(url, {
+    const data = await ofetch.raw(url, {
       method: entry.method,
       headers: {
         ...contentHeaders,
@@ -164,51 +163,38 @@ async function dispatchRest(
       },
       body: requestBody,
       signal: opts.signal,
+      // Let ofetch parse JSON automatically, but don't retry by default
+      retry: 0,
     });
-  } catch (fetchErr) {
-    const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
-    const error = new MagiaError(
-      isAbort
-        ? `${entry.method} ${entry.path} was aborted`
-        : `${entry.method} ${entry.path} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
-      {
-        status: 0,
-        code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
-        api: apiName,
-        operation: operationName,
-        data: undefined,
-      },
-    );
-    config.onError?.(error);
-    throw error;
-  }
 
-  if (!response.ok) {
-    let errorData: unknown;
-    try {
-      errorData = await response.json();
-    } catch {
-      errorData = undefined;
+    if (opts.raw) {
+      return { data: data._data, headers: data.headers, status: data.status };
     }
-    const error = new MagiaError(`${entry.method} ${entry.path} failed with ${response.status}`, {
-      status: response.status,
-      code: String(response.status),
-      api: apiName,
-      operation: operationName,
-      data: errorData,
-      response,
-    });
-    config.onError?.(error);
-    throw error;
+
+    return data._data;
+  } catch (err) {
+    if (err instanceof FetchError) {
+      const isAbort = err.cause instanceof DOMException && err.cause.name === "AbortError";
+      const error = new MagiaError(
+        isAbort
+          ? `${entry.method} ${entry.path} was aborted`
+          : err.response
+            ? `${entry.method} ${entry.path} failed with ${err.response.status}`
+            : `${entry.method} ${entry.path} network error: ${err.message}`,
+        {
+          status: err.response?.status ?? 0,
+          code: isAbort ? "TIMEOUT" : err.response ? String(err.response.status) : "NETWORK_ERROR",
+          api: apiName,
+          operation: operationName,
+          data: err.data,
+          response: err.response as Response | undefined,
+        },
+      );
+      config.onError?.(error);
+      throw error;
+    }
+    throw err;
   }
-
-  const data = await response.json();
-
-  if (opts.raw) {
-    return { data, headers: response.headers, status: response.status };
-  }
-
-  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,62 +213,50 @@ async function dispatchGraphQL(
   const url = apiConfig.baseUrl;
   const configHeaders = await resolveHeaders(apiConfig);
 
-  let response: Response;
+  let response;
   try {
-    response = await fetch(url, {
+    response = await ofetch.raw(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...configHeaders,
         ...opts.headers,
       },
-      body: JSON.stringify({
+      body: {
         query: entry.document,
         variables: Object.keys(input).length > 0 ? input : undefined,
-      }),
-      signal: opts.signal,
-    });
-  } catch (fetchErr) {
-    const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
-    const error = new MagiaError(
-      isAbort
-        ? `GraphQL ${operationName} was aborted`
-        : `GraphQL ${operationName} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
-      {
-        status: 0,
-        code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
-        api: apiName,
-        operation: operationName,
-        data: undefined,
       },
-    );
-    config.onError?.(error);
-    throw error;
-  }
-
-  if (!response.ok) {
-    let errorData: unknown;
-    try {
-      errorData = await response.json();
-    } catch {
-      errorData = undefined;
-    }
-    const error = new MagiaError(`GraphQL ${operationName} failed with ${response.status}`, {
-      status: response.status,
-      code: String(response.status),
-      api: apiName,
-      operation: operationName,
-      data: errorData,
-      response,
+      signal: opts.signal,
+      retry: 0,
     });
-    config.onError?.(error);
-    throw error;
+  } catch (err) {
+    if (err instanceof FetchError) {
+      const isAbort = err.cause instanceof DOMException && err.cause.name === "AbortError";
+      const error = new MagiaError(
+        isAbort
+          ? `GraphQL ${operationName} was aborted`
+          : err.response
+            ? `GraphQL ${operationName} failed with ${err.response.status}`
+            : `GraphQL ${operationName} network error: ${err.message}`,
+        {
+          status: err.response?.status ?? 0,
+          code: isAbort ? "TIMEOUT" : err.response ? String(err.response.status) : "NETWORK_ERROR",
+          api: apiName,
+          operation: operationName,
+          data: err.data,
+          response: err.response as Response | undefined,
+        },
+      );
+      config.onError?.(error);
+      throw error;
+    }
+    throw err;
   }
 
-  const json = (await response.json()) as { data?: unknown; errors?: unknown[] };
+  const json = response._data as { data?: unknown; errors?: unknown[] };
 
   // GraphQL errors in response body
-  if (json.errors && Array.isArray(json.errors) && json.errors.length > 0) {
+  if (json?.errors && Array.isArray(json.errors) && json.errors.length > 0) {
     const firstErr = json.errors[0] as Record<string, unknown>;
     const extensions = (firstErr.extensions ?? {}) as Record<string, unknown>;
     const error = new MagiaError(
@@ -293,7 +267,7 @@ async function dispatchGraphQL(
         api: apiName,
         operation: operationName,
         data: json.errors,
-        response,
+        response: response as unknown as Response,
       },
     );
     config.onError?.(error);
@@ -301,10 +275,10 @@ async function dispatchGraphQL(
   }
 
   if (opts.raw) {
-    return { data: json.data, headers: response.headers, status: response.status };
+    return { data: json?.data, headers: response.headers, status: response.status };
   }
 
-  return json.data;
+  return json?.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,9 +341,10 @@ function dispatchRestSSE(
     const configHeaders = await resolveHeaders(apiConfig);
     const inputHeaders = extractHeaders(entry, input);
 
+    // SSE needs raw fetch for streaming — ofetch doesn't support ReadableStream
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await globalThis.fetch(url, {
         method: entry.method,
         headers: {
           Accept: "text/event-stream",
@@ -453,9 +428,10 @@ function dispatchGraphQLSubscription(
       variables: Object.keys(input).length > 0 ? input : undefined,
     });
 
+    // GraphQL SSE needs raw fetch for streaming
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await globalThis.fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -152,7 +152,7 @@ function createTestProxy(mocks: MockApis, path: string[]): unknown {
       if (prop === "subscribe" && path.length === 2) {
         const [apiName, operationName] = path;
         const mock = mocks[apiName]?.[operationName];
-        return (input: Record<string, unknown> = {}) => {
+        return (_input: Record<string, unknown> = {}) => {
           if (!mock) {
             throw new Error(
               `No mock defined for ${apiName}.${operationName}. ` +

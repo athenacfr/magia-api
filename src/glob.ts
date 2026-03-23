@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { resolve, relative, join } from "node:path";
+import { resolve, join } from "node:path";
 
 /**
  * Simple glob implementation for .graphql files.

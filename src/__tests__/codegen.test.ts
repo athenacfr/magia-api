@@ -8,12 +8,11 @@ import { parseSpec } from "../codegen/parser";
 import { extractOperations } from "../codegen/extractor";
 import { generateGenFile } from "../codegen/gen-file";
 
+/** Mock exported types as openapi-typescript generates them — operationId keys in operations interface */
 function mockExportedTypes(ops: { operationName: string }[]): Set<string> {
   const types = new Set<string>();
   for (const op of ops) {
-    const cap = op.operationName[0].toUpperCase() + op.operationName.slice(1);
-    types.add(`${cap}Data`);
-    types.add(`${cap}Response`);
+    types.add(op.operationName);
   }
   return types;
 }
@@ -341,15 +340,10 @@ describe("generateGenFile", () => {
     expect(source).toContain("import type { Manifest, ManifestApi, MagiaOperation, MagiaMutation");
   });
 
-  it("includes error types when exportedTypes has *Errors", () => {
+  it("includes error types extracted from operations interface", () => {
     const spec = parseSpec(FIXTURE_TEXT);
     const ops = extractOperations(spec);
-    const exportedTypesWithErrors = mockExportedTypes(ops);
-    // Add error types like Hey API would generate
-    for (const op of ops) {
-      const cap = op.operationName[0].toUpperCase() + op.operationName.slice(1);
-      exportedTypesWithErrors.add(`${cap}Errors`);
-    }
+    const exportedTypes = mockExportedTypes(ops);
 
     const source = generateGenFile({
       petstore: {
@@ -357,31 +351,31 @@ describe("generateGenFile", () => {
         operations: ops,
         plugins: [],
         typesImportPath: "../node_modules/.magia/internals/petstore",
-        exportedTypes: exportedTypesWithErrors,
+        exportedTypes,
       },
     });
 
-    // Error types should appear in operation type definitions
-    expect(source).toContain("petstoreTypes.GetPetByIdErrors");
-    expect(source).toContain("petstoreTypes.AddPetErrors");
+    // Error types extracted from operations[opId]["responses"] via ErrorResponses<T>
+    expect(source).toContain("ErrorResponses<");
+    expect(source).toContain('petstoreTypes.operations["getPetById"]');
   });
 
-  it("uses empty errors when no *Errors type exported", () => {
+  it("uses empty errors when operation not in exportedTypes", () => {
     const spec = parseSpec(FIXTURE_TEXT);
     const ops = extractOperations(spec);
-    // No *Errors in exported types
+    // Empty exported types — simulates no operations interface
     const source = generateGenFile({
       petstore: {
         apiType: "rest",
         operations: ops,
         plugins: [],
         typesImportPath: "../node_modules/.magia/internals/petstore",
-        exportedTypes: mockExportedTypes(ops),
+        exportedTypes: new Set<string>(),
       },
     });
 
-    // Should use {} (empty) for error types
-    expect(source).not.toContain("Errors");
+    // Should use void/{} for types when operation not found
+    expect(source).toContain("MagiaOperation<void, void, {}>");
     // But should still have MagiaError in imports
     expect(source).toContain("MagiaError");
   });

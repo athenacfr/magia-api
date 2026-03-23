@@ -224,11 +224,11 @@ describe("GraphQL proxy dispatch", () => {
   };
 
   function mockGqlFetch(data: unknown) {
-    return vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers({ "content-type": "application/json" }),
-      json: () => Promise.resolve({ data }),
+    return vi.fn().mockImplementation(async () => {
+      return new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     });
   }
 
@@ -248,7 +248,8 @@ describe("GraphQL proxy dispatch", () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://api.example.com/graphql");
     expect(init.method).toBe("POST");
-    expect(init.headers["Content-Type"]).toBe("application/json");
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers);
+    expect(headers.get("content-type")).toBe("application/json");
 
     const body = JSON.parse(init.body);
     expect(body.query).toContain("query GetUser");
@@ -296,12 +297,9 @@ describe("GraphQL proxy dispatch", () => {
   });
 
   it("throws MagiaError on GraphQL errors in response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers(),
-      json: () =>
-        Promise.resolve({
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({
           data: null,
           errors: [
             {
@@ -310,6 +308,8 @@ describe("GraphQL proxy dispatch", () => {
             },
           ],
         }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
     });
 
     const magia = createMagia({ ...config, manifest }) as any;
@@ -330,11 +330,11 @@ describe("GraphQL proxy dispatch", () => {
   });
 
   it("throws MagiaError on HTTP error", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      headers: new Headers(),
-      json: () => Promise.resolve({ error: "internal" }),
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      return new Response(JSON.stringify({ error: "internal" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
     });
 
     const magia = createMagia({ ...config, manifest }) as any;

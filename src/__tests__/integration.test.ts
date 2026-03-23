@@ -42,12 +42,20 @@ const config = {
 };
 
 function mockFetch(data: unknown = {}, status = 200) {
-  return vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers({ "content-type": "application/json" }),
-    json: () => Promise.resolve(data),
+  return vi.fn().mockImplementation(async () => {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   });
+}
+
+/** Helper: get header value from fetch mock init (handles Headers objects) */
+function getHeader(init: any, name: string): string | null {
+  if (init.headers instanceof Headers) {
+    return init.headers.get(name);
+  }
+  return init.headers?.[name] ?? null;
 }
 
 describe("Integration: full DX flow", () => {
@@ -68,7 +76,7 @@ describe("Integration: full DX flow", () => {
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://petstore.example.com/pet/1");
     expect(init.method).toBe("GET");
-    expect(init.headers["X-Api-Key"]).toBe("test-key");
+    expect(getHeader(init, "x-api-key")).toBe("test-key");
   });
 
   it("queryOptions returns correct shape with queryFn that dispatches", async () => {

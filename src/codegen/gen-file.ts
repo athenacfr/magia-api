@@ -58,16 +58,39 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
   }
   lines.push(``);
 
-  // Helper: flatten Hey API's { path, query, headers, body } into flat params (REST only)
+  // Helper: extract input type from openapi-typescript operations interface
+  // Flattens path + query + header params + requestBody into a single type
   const hasRest = Object.values(apis).some((a) => a.apiType === "rest");
   if (hasRest) {
-    lines.push(
-      `type FlatInput<T> = T extends { path?: infer P; query?: infer Q; headers?: infer H; body?: infer B }`,
-    );
+    lines.push(`// Flatten openapi-typescript operation params into a single input type`);
+    lines.push(`type FlatInput<T> = T extends {`);
+    lines.push(`  parameters?: { path?: infer P; query?: infer Q; header?: infer H };`);
+    lines.push(`  requestBody?: { content: { [k: string]: infer B } };`);
+    lines.push(`}`);
     lines.push(
       `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {}) & (B extends object ? B : {})`,
     );
-    lines.push(`  : T`);
+    lines.push(`  : T extends {`);
+    lines.push(`    parameters?: { path?: infer P; query?: infer Q; header?: infer H };`);
+    lines.push(`  }`);
+    lines.push(
+      `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {})`,
+    );
+    lines.push(`  : {}`);
+    lines.push(``);
+    lines.push(`// Extract success response type (first 2XX response with application/json)`);
+    lines.push(
+      `type SuccessResponse<T> = T extends { 200: { content: { "application/json": infer R } } } ? R`,
+    );
+    lines.push(`  : T extends { 201: { content: { "application/json": infer R } } } ? R`);
+    lines.push(`  : T extends { 204: { content: { "application/json": infer R } } } ? R`);
+    lines.push(`  : void`);
+    lines.push(``);
+    lines.push(`// Extract error response types as { status: ErrorType } map`);
+    lines.push(`type ErrorResponses<T> = {`);
+    lines.push(`  [K in keyof T as K extends \`4\${string}\` | \`5\${string}\` ? K : never]:`);
+    lines.push(`    T[K] extends { content: { "application/json": infer E } } ? E : unknown`);
+    lines.push(`}`);
     lines.push(``);
   }
 
@@ -121,7 +144,6 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
     lines.push(`/** Lazy manifest — each API loaded on first use (for code splitting) */`);
     lines.push(`export const lazyManifest = {`);
     for (const apiName of apiNames) {
-      // Point to the per-API export from this same file — bundlers can split on dynamic import
       lines.push(`  ${JSON.stringify(apiName)}: () => Promise.resolve(${apiName}Manifest),`);
     }
     lines.push(`}`);
@@ -158,33 +180,39 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
 function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boolean): void {
   for (const op of api.operations) {
     const isMut = op.entry.method !== "GET";
-    const hasParams = Object.keys(op.entry.params).length > 0;
-    const capName = capitalize(op.operationName);
+    const opId = op.operationName;
 
-    const dataTypeName = `${capName}Data`;
-    const responseTypeName = `${capName}Response`;
-    const errorsTypeName = `${capName}Errors`;
-    const hasDataType = api.exportedTypes.has(dataTypeName);
-    const hasResponseType = api.exportedTypes.has(responseTypeName);
-    const hasErrorsType = api.exportedTypes.has(errorsTypeName);
+    // openapi-typescript uses the operationId as-is in the operations interface
+    // We need to find the matching key — check both raw and capitalized
+    const hasOp = api.exportedTypes.has(opId);
 
-    const reqType = hasParams && hasDataType ? `FlatInput<${ns}.${dataTypeName}>` : "void";
-    const resType = hasResponseType ? `${ns}.${responseTypeName}` : "void";
-    const errType = hasErrorsType ? `${ns}.${errorsTypeName}` : "{}";
+    // Type references using openapi-typescript's operations interface
+    let reqType: string;
+    let resType: string;
+    let errType: string;
+
+    if (hasOp) {
+      reqType = `FlatInput<${ns}.operations[${JSON.stringify(opId)}]>`;
+      resType = `SuccessResponse<${ns}.operations[${JSON.stringify(opId)}]["responses"]>`;
+      errType = `ErrorResponses<${ns}.operations[${JSON.stringify(opId)}]["responses"]>`;
+    } else {
+      reqType = "void";
+      resType = "void";
+      errType = "{}";
+    }
 
     // SSE endpoints get MagiaSSEOperation instead of the normal types
     if (op.entry.sse) {
-      let line = `      ${op.operationName}: MagiaSSEOperation<${reqType}, ${resType}>`;
-      lines.push(line);
+      lines.push(`      ${opId}: MagiaSSEOperation<${reqType}, ${resType}>`);
       continue;
     }
 
     if (isMut) {
-      let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
+      let line = `      ${opId}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
       if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
       lines.push(line);
     } else {
-      let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
+      let line = `      ${opId}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
       if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
       if (tq && op.entry.pagination)
         line += `\n        & MagiaTanStackInfiniteQuery<${reqType}, ${resType}>`;

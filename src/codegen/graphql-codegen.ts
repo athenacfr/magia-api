@@ -6,7 +6,7 @@ import * as typescriptPlugin from "@graphql-codegen/typescript";
 import * as typescriptOperationsPlugin from "@graphql-codegen/typescript-operations";
 import { parse, type DocumentNode } from "graphql";
 import { glob } from "../glob";
-import type { GraphQLManifestEntry, PaginationMeta } from "../types";
+import type { PaginationMeta } from "../types";
 
 export interface GraphQLCodegenOptions {
   apiName: string;

@@ -173,11 +173,11 @@ const config = {
 };
 
 function mockFetch(data: unknown = {}, status = 200) {
-  return vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    headers: new Headers({ "content-type": "application/json" }),
-    json: () => Promise.resolve(data),
+  return vi.fn().mockImplementation(async () => {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   });
 }
 
@@ -278,11 +278,12 @@ describe("Proxy error handling", () => {
   });
 
   it("handles non-JSON error response gracefully", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 502,
-      headers: new Headers(),
-      json: () => Promise.reject(new SyntaxError("Unexpected token")),
+    // Return a non-JSON body with 502 status
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      return new Response("Bad Gateway", {
+        status: 502,
+        headers: { "content-type": "text/plain" },
+      });
     });
     const magia = createMagia({ ...config, manifest }) as any;
 
@@ -292,7 +293,6 @@ describe("Proxy error handling", () => {
     } catch (err) {
       const e = err as MagiaError;
       expect(e.status).toBe(502);
-      expect(e.data).toBeUndefined();
       expect(e.isServerError()).toBe(true);
     }
   });

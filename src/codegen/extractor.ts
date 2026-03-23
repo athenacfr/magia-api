@@ -1,8 +1,7 @@
-import type { OpenApiSpec, OpenApiOperation, OpenApiParameter, OpenApiPathItem } from "./parser";
+import type { OpenApiSpec, OpenApiOperation, OpenApiParameter } from "./parser";
 import type { RestManifestEntry, ParamLocation, PaginationMeta } from "../types";
 
 const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
-type HttpMethod = (typeof HTTP_METHODS)[number];
 
 export interface ExtractedOperation {
   operationName: string;
@@ -15,11 +14,16 @@ export interface ExtractOptions {
 }
 
 /**
- * Default operation name: use operationId, fallback to method + path slug.
- * e.g. GET /pet/{petId} → getPetPetId
+ * Default operation name: normalize operationId to camelCase, fallback to method + path slug.
+ * Handles dots, dashes, slashes in operationId:
+ *   "list.all.pets" → "listAllPets"
+ *   "get-pet-by-id" → "getPetById"
+ *   "get/pet/by/id" → "getPetById"
  */
 function defaultOperationName(method: string, path: string, operationId?: string): string {
-  if (operationId) return operationId;
+  if (operationId) {
+    return normalizeOperationId(operationId);
+  }
 
   // Fallback: GET /pet/{petId} → get_pet_petId → getPetPetId
   const slug = path
@@ -34,6 +38,18 @@ function defaultOperationName(method: string, path: string, operationId?: string
     .join("");
 
   return method.toLowerCase() + camel[0].toUpperCase() + camel.slice(1);
+}
+
+/**
+ * Normalize an operationId to camelCase.
+ * Splits on dots, dashes, slashes, underscores and joins as camelCase.
+ */
+function normalizeOperationId(id: string): string {
+  const parts = id.split(/[.\-/_]/).filter(Boolean);
+  if (parts.length === 0) return id;
+  return parts
+    .map((s, i) => (i === 0 ? s[0].toLowerCase() + s.slice(1) : s[0].toUpperCase() + s.slice(1)))
+    .join("");
 }
 
 /**

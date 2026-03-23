@@ -13,14 +13,14 @@ import type { DefineConfigInput } from "./types";
  * - HMR works because magia.gen.ts is in src/ (Vite watches it)
  */
 export function magiaApi(): Plugin {
-  let server: ViteDevServer | null = null;
+  let _server: ViteDevServer | null = null;
   const watchers: ReturnType<typeof watch>[] = [];
 
   return {
     name: "magia-api",
 
     configureServer(srv) {
-      server = srv;
+      _server = srv;
     },
 
     async configResolved(config) {

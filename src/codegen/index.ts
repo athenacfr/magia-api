@@ -13,7 +13,7 @@ import {
 } from "../checksum";
 import { parseSpec } from "./parser";
 import { extractOperations, type ExtractedOperation } from "./extractor";
-import { generateTypes, writeSpecFile } from "./hey-api";
+import { generateTypes } from "./openapi-ts";
 import { generateGraphQLTypes, type GraphQLExtractedOperation } from "./graphql-codegen";
 import { generateGenFile } from "./gen-file";
 
@@ -83,42 +83,47 @@ async function generateRestApi(
   // 1. Parse spec
   const spec = parseSpec(specText);
 
-  // 3. Extract operations
+  // 2. Extract operations (with operationId normalization)
   const operations = extractOperations(spec, {
     operationName: apiConfig.operationName,
   });
 
-  // 4. Write spec file for Hey API
-  const specPath = await writeSpecFile(outputDir, apiName, specText);
-
-  // 5. Generate types via Hey API
+  // 3. Generate types via openapi-typescript
   let typesDir: string;
   try {
     typesDir = await generateTypes({
       apiName,
-      specPath,
+      specText,
       outputDir,
     });
-  } catch (heyApiErr) {
-    const msg = heyApiErr instanceof Error ? heyApiErr.message : String(heyApiErr);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     const isCircularRef = /circular|\$ref.*loop|recursive/i.test(msg);
     throw new Error(
       isCircularRef
         ? `API "${apiName}" has circular $ref in schema. ` +
-            `Hey API cannot resolve circular references. ` +
             `Consider simplifying the schema or breaking the cycle.`
-        : `Hey API type generation failed for "${apiName}": ${msg}`,
-      { cause: heyApiErr },
+        : `Type generation failed for "${apiName}": ${msg}`,
+      { cause: err },
     );
   }
 
-  // 6. Scan Hey API output for available type names
-  const indexContent = await readFile(resolve(typesDir, "index.ts"), "utf-8");
-  const exportedTypes = new Set(
-    [...indexContent.matchAll(/\b(\w+(?:Data|Response|Errors))\b/g)].map((m) => m[1]),
-  );
+  // 4. Scan openapi-typescript output for available operation names
+  // openapi-typescript generates an `operations` interface keyed by operationId
+  const typesContent = await readFile(resolve(typesDir, "types.ts"), "utf-8");
+  const exportedTypes = new Set<string>();
 
-  // 7. Collect for gen file
+  // Extract operation names from the operations interface
+  // Pattern: operationId keys inside `interface operations { ... }`
+  const opsMatch = typesContent.match(/interface operations\s*\{([\s\S]*?)\n\}/);
+  if (opsMatch) {
+    const opsBlock = opsMatch[1];
+    for (const match of opsBlock.matchAll(/^\s+(\w+)\s*:/gm)) {
+      exportedTypes.add(match[1]);
+    }
+  }
+
+  // 5. Collect for gen file
   const plugins = apiConfig.plugins ?? [];
   const typesRelative = relative(dirname(genFilePath), typesDir).replace(/\\/g, "/");
   const typesImportPath = typesRelative.startsWith(".") ? typesRelative : `./${typesRelative}`;

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolve, join } from "node:path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { defineConfig } from "../config";
