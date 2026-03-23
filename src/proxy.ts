@@ -76,6 +76,23 @@ function extractBody(
 }
 
 // ---------------------------------------------------------------------------
+// Header extraction from flat input
+// ---------------------------------------------------------------------------
+
+function extractHeaders(
+  entry: ManifestEntry,
+  flatInput: Record<string, unknown>,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [key, location] of Object.entries(entry.params)) {
+    if (location === "header" && flatInput[key] != null) {
+      headers[key] = String(flatInput[key]);
+    }
+  }
+  return headers;
+}
+
+// ---------------------------------------------------------------------------
 // Resolve headers (static or async function)
 // ---------------------------------------------------------------------------
 
@@ -112,12 +129,14 @@ async function dispatch(
   const url = buildUrl(apiConfig.baseUrl, entry, input, opts.query);
   const body = extractBody(entry, input);
   const configHeaders = await resolveHeaders(apiConfig);
+  const inputHeaders = extractHeaders(entry, input);
 
   const response = await fetch(url, {
     method: entry.method,
     headers: {
       ...(body != null ? { "Content-Type": "application/json" } : {}),
       ...configHeaders,
+      ...inputHeaders,
       ...opts.headers,
     },
     body: body != null ? JSON.stringify(body) : undefined,
@@ -188,7 +207,7 @@ export function createMagia(config: MagiaConfig, manifest: Manifest): MagiaClien
 }
 
 // Re-export for internal use by plugins
-export { buildUrl, extractBody, resolveHeaders, dispatch };
+export { buildUrl, extractBody, extractHeaders, resolveHeaders, dispatch };
 
 // Need the type in scope for the return type
 import type { MagiaClient } from "./types";

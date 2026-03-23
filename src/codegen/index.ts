@@ -99,11 +99,25 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
       const specPath = await writeSpecFile(outputDir, apiName, specText);
 
       // 5. Generate types via Hey API
-      const typesDir = await generateTypes({
-        apiName,
-        specPath,
-        outputDir,
-      });
+      let typesDir: string;
+      try {
+        typesDir = await generateTypes({
+          apiName,
+          specPath,
+          outputDir,
+        });
+      } catch (heyApiErr) {
+        const msg = heyApiErr instanceof Error ? heyApiErr.message : String(heyApiErr);
+        const isCircularRef = /circular|\$ref.*loop|recursive/i.test(msg);
+        throw new Error(
+          isCircularRef
+            ? `API "${apiName}" has circular $ref in schema. ` +
+                `Hey API cannot resolve circular references. ` +
+                `Consider simplifying the schema or breaking the cycle.`
+            : `Hey API type generation failed for "${apiName}": ${msg}`,
+          { cause: heyApiErr },
+        );
+      }
 
       // 6. Scan Hey API output for available type names
       const indexContent = await readFile(resolve(typesDir, "index.ts"), "utf-8");

@@ -1,9 +1,28 @@
 {
   "name": "magia-api",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Zero-ceremony typed API client generation for Vite",
   "type": "module",
   "license": "MIT",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "openapi",
+    "codegen",
+    "vite",
+    "typescript",
+    "api-client",
+    "tanstack-query",
+    "react-query",
+    "proxy",
+    "rest"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahtwr/magia-api"
+  },
   "exports": {
     ".": {
       "import": {

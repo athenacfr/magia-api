@@ -2,7 +2,7 @@
 // Manifest (internal — describes operations for the Proxy)
 // ---------------------------------------------------------------------------
 
-export type ParamLocation = "path" | "query" | "body";
+export type ParamLocation = "path" | "query" | "body" | "header";
 
 export interface ManifestEntry {
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";

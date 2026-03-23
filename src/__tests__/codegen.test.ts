@@ -114,6 +114,33 @@ describe("extractOperations", () => {
     expect(names).toContain("post_addPet");
   });
 
+  it("extracts header params", () => {
+    const specWithHeaders = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/pets": {
+            get: {
+              operationId: "listPets",
+              parameters: [
+                { name: "X-Api-Key", in: "header", required: true, schema: { type: "string" } },
+                { name: "status", in: "query", schema: { type: "string" } },
+              ],
+              responses: { "200": { description: "OK" } },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specWithHeaders);
+    expect(ops).toHaveLength(1);
+    expect(ops[0].entry.params).toEqual({
+      "X-Api-Key": "header",
+      status: "query",
+    });
+  });
+
   it("generates fallback name when no operationId", () => {
     const specNoId = parseSpec(
       JSON.stringify({

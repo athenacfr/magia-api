@@ -209,6 +209,32 @@ describe("createMagia Proxy", () => {
     expect(url).toBe("https://petstore.example.com/pet/findByStatus");
   });
 
+  it("passes header params from flat input to fetch headers", async () => {
+    const fetch = mockFetch([]);
+    globalThis.fetch = fetch;
+
+    const manifestWithHeaders: Manifest = {
+      petstore: {
+        plugins: [],
+        operations: {
+          listPets: {
+            method: "GET",
+            path: "/pets",
+            params: { "X-Api-Key": "header", status: "query" },
+          },
+        },
+      },
+    };
+
+    const magia = createMagia(config, manifestWithHeaders) as any;
+    await magia.petstore.listPets.fetch({ "X-Api-Key": "my-key", status: "available" });
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toContain("status=available");
+    expect(url).not.toContain("X-Api-Key");
+    expect(init.headers["X-Api-Key"]).toBe("my-key");
+  });
+
   it("does NOT expose TQ methods when plugin not in manifest", () => {
     const magia = createMagia(config, manifest) as any;
     // manifest has plugins: [] — no TQ

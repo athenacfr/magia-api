@@ -21,7 +21,7 @@ export async function generateTypes(opts: HeyApiOptions): Promise<string> {
 
   await createClient({
     input: opts.specPath,
-    output: typesDir,
+    output: { path: typesDir, clean: false },
     plugins: ["@hey-api/typescript"],
   });
 

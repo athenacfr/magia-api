@@ -40,10 +40,12 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
   }
   lines.push(``);
 
-  // Helper: flatten Hey API's { path, query, body } into flat params
-  lines.push(`type FlatInput<T> = T extends { path?: infer P; query?: infer Q; body?: infer B }`);
+  // Helper: flatten Hey API's { path, query, headers, body } into flat params
   lines.push(
-    `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (B extends object ? B : {})`,
+    `type FlatInput<T> = T extends { path?: infer P; query?: infer Q; headers?: infer H; body?: infer B }`,
+  );
+  lines.push(
+    `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {}) & (B extends object ? B : {})`,
   );
   lines.push(`  : T`);
   lines.push(``);

@@ -48,14 +48,14 @@ function extractParams(
 
   // Path-level parameters
   for (const param of pathParams) {
-    if (param.in === "path" || param.in === "query") {
+    if (param.in === "path" || param.in === "query" || param.in === "header") {
       params[param.name] = param.in;
     }
   }
 
   // Operation-level parameters (override path-level)
   for (const param of operation.parameters ?? []) {
-    if (param.in === "path" || param.in === "query") {
+    if (param.in === "path" || param.in === "query" || param.in === "header") {
       params[param.name] = param.in;
     }
   }
