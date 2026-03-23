@@ -182,6 +182,11 @@ magia-api init                  # Scaffold config file
 
 - [API Reference](docs/api-reference.md) — All exports, types, methods
 
+## Examples
+
+- [GraphQL](examples/graphql) — GitHub GraphQL API with TanStack Query
+- [Multi-API](examples/multi-api) — REST + GraphQL in a single project
+
 ## License
 
 MIT
