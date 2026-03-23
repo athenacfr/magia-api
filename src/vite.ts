@@ -39,7 +39,10 @@ export function magiaApi(): Plugin {
 
         const apiCount = Object.keys(result.apis).length;
         const opCount = Object.values(result.apis).reduce((sum, a) => sum + a.operations, 0);
-        console.log(`[magia-api] Generated ${opCount} operations from ${apiCount} API(s)`);
+        const skippedCount = result.skipped.length;
+        const parts = [`Generated ${opCount} operations from ${apiCount} API(s)`];
+        if (skippedCount > 0) parts.push(`${skippedCount} unchanged (skipped)`);
+        console.log(`[magia-api] ${parts.join(", ")}`);
 
         if (config.command === "serve") {
           setupWatchers(cwd, magiaConfig);

@@ -3,6 +3,7 @@ import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
 
 import type { DefineConfigInput, MagiaPlugin, GraphQLApiDefConfig } from "../types";
 import { resolveSchema } from "../schema";
+import { loadChecksums, saveChecksums, hasSchemaChanged, type ChecksumStore } from "../checksum";
 import { parseSpec } from "./parser";
 import { extractOperations, type ExtractedOperation } from "./extractor";
 import { generateTypes, writeSpecFile } from "./hey-api";
@@ -14,11 +15,14 @@ export interface GenerateOptions {
   cwd?: string;
   /** Only generate these APIs (default: all) */
   filter?: string[];
+  /** Force regeneration even if schema hasn't changed */
+  force?: boolean;
 }
 
 export interface GenerateResult {
   genFilePath: string;
   apis: Record<string, { operations: number; typesDir: string }>;
+  skipped: string[];
   errors: Array<{ apiName: string; error: Error }>;
 }
 
@@ -64,18 +68,12 @@ type GenApiInfo =
 async function generateRestApi(
   apiName: string,
   apiConfig: { schema: any; plugins?: MagiaPlugin[]; operationName?: any },
+  specText: string,
   cwd: string,
   outputDir: string,
   genFilePath: string,
 ): Promise<{ genApi: GenApiInfo; operationCount: number; typesDir: string }> {
-  // 1. Resolve schema
-  const specText = await resolveSchema({
-    apiName,
-    source: apiConfig.schema,
-    cwd,
-  });
-
-  // 2. Parse spec
+  // 1. Parse spec
   const spec = parseSpec(specText);
 
   // 3. Extract operations
@@ -132,18 +130,12 @@ async function generateRestApi(
 async function generateGraphQLApi(
   apiName: string,
   apiConfig: GraphQLApiDefConfig,
+  schemaText: string,
   cwd: string,
   outputDir: string,
   genFilePath: string,
 ): Promise<{ genApi: GenApiInfo; operationCount: number; typesDir: string }> {
-  // 1. Resolve schema
-  const schemaText = await resolveSchema({
-    apiName,
-    source: apiConfig.schema,
-    cwd,
-  });
-
-  // 2. Generate types via graphql-codegen + extract operations
+  // 1. Generate types via graphql-codegen + extract operations
   const { typesDir, operations, exportedTypes } = await generateGraphQLTypes({
     apiName,
     schemaText,
@@ -182,8 +174,12 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
   const result: GenerateResult = {
     genFilePath: "",
     apis: {},
+    skipped: [],
     errors: [],
   };
+
+  // Load checksums for incremental builds
+  const checksums: ChecksumStore = opts.force ? {} : await loadChecksums(outputDir);
 
   for (const apiName of apiNames) {
     const apiConfig = opts.config.apis[apiName];
@@ -193,10 +189,33 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     }
 
     try {
+      // Validate type before resolving schema
+      if (apiConfig.type !== "rest" && apiConfig.type !== "graphql") {
+        result.errors.push({
+          apiName,
+          error: new Error(`Unknown API type: "${(apiConfig as any).type}"`),
+        });
+        continue;
+      }
+
+      // Resolve schema first (needed for hash check)
+      const schemaText = await resolveSchema({
+        apiName,
+        source: apiConfig.schema,
+        cwd,
+      });
+
+      // Skip if schema hasn't changed
+      if (!opts.force && !hasSchemaChanged(checksums, apiName, schemaText)) {
+        result.skipped.push(apiName);
+        continue;
+      }
+
       if (apiConfig.type === "rest") {
         const { genApi, operationCount, typesDir } = await generateRestApi(
           apiName,
           apiConfig,
+          schemaText,
           cwd,
           outputDir,
           genFilePath,
@@ -206,18 +225,14 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
       } else if (apiConfig.type === "graphql") {
         const { genApi, operationCount, typesDir } = await generateGraphQLApi(
           apiName,
-          apiConfig,
+          apiConfig as GraphQLApiDefConfig,
+          schemaText,
           cwd,
           outputDir,
           genFilePath,
         );
         genApis[apiName] = genApi;
         result.apis[apiName] = { operations: operationCount, typesDir };
-      } else {
-        result.errors.push({
-          apiName,
-          error: new Error(`Unknown API type: "${(apiConfig as any).type}"`),
-        });
       }
     } catch (err) {
       result.errors.push({
@@ -233,6 +248,9 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     await atomicWrite(genFilePath, source);
     result.genFilePath = genFilePath;
   }
+
+  // Persist checksums
+  await saveChecksums(outputDir, checksums);
 
   return result;
 }
