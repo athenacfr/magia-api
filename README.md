@@ -169,22 +169,30 @@ magia-api init                  # Scaffold config file
 
 ## Documentation
 
-- [Configuration](docs/configuration.md)
-- [Runtime Client](docs/runtime-client.md) (fetch, params, headers, shorthands)
-- [Schema Resolution](docs/schema-resolution.md) (sources, caching, incremental, diffing)
-- [TanStack Query Plugin](docs/plugins/tanstack-query.md)
-- [Error Handling](docs/error-handling.md)
-- [Testing](docs/testing.md) (`createTestMagia`, mocking, React Testing Library)
-- [CLI Reference](docs/cli.md)
-- [Bundler Plugins](docs/bundler-plugins.md) (Vite, Rollup, Webpack, esbuild)
-- [API Reference](docs/api-reference.md) (all exports, types, methods)
+### Getting Started
+
+- [Configuration](docs/configuration.md) — `defineConfig()`, schema sources, plugins, custom operation names
+- [Runtime Client](docs/runtime-client.md) — `createMagia()`, fetch, safeFetch, interceptors, context, headers
+- [Error Handling](docs/error-handling.md) — `MagiaError`, `.safeFetch()`, `.isError()`, `transformError`, abort vs timeout
+- [TanStack Query Plugin](docs/plugins/tanstack-query.md) — `queryOptions`, `queryKey`, `mutationOptions`, `infiniteQueryOptions`
+
+### Infrastructure
+
+- [Schema Resolution](docs/schema-resolution.md) — URL, file, async function, script sources, caching, incremental diffing
+- [Bundler Plugins](docs/bundler-plugins.md) — Vite, Rollup, Webpack, esbuild
+- [CLI Reference](docs/cli.md) — `generate`, `validate`, `init`
+- [Testing](docs/testing.md) — `createTestMagia`, mocking, React Testing Library
 
 ### Guides
 
-- [REST API](docs/guides/rest-api.md)
-- [GraphQL API](docs/guides/graphql-api.md)
-- [Multiple APIs](docs/guides/multiple-apis.md)
-- [CI Setup](docs/guides/ci-setup.md)
+- [REST API](docs/guides/rest-api.md) — End-to-end REST example
+- [GraphQL API](docs/guides/graphql-api.md) — End-to-end GraphQL example
+- [Multiple APIs](docs/guides/multiple-apis.md) — Multi-API setup
+- [CI Setup](docs/guides/ci-setup.md) — CI pipeline configuration
+
+### Reference
+
+- [API Reference](docs/api-reference.md) — All exports, types, methods
 
 ## License
 
