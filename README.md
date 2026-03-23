@@ -5,17 +5,18 @@ Zero-ceremony typed API client generation for Vite.
 Define your APIs once. Get fully typed `fetch()`, TanStack Query options, and cache keys — all from a single config file. No codegen scripts, no manual types, no boilerplate.
 
 ```typescript
-// Fully typed — zero manual types
+// REST — fully typed from OpenAPI schema
 const pet = await magia.petstore.getPetById.fetch({ petId: 1 });
+
+// GraphQL — same API, same DX
+const user = await magia.github.GetUser.fetch({ login: "octocat" });
 
 // Safe fetch — no try/catch needed
 const { data, error } = await magia.petstore.getPetById.safeFetch({ petId: 1 });
 
 // TanStack Query — standard API, no wrappers
 const { data } = useQuery(magia.petstore.getPetById.queryOptions({ petId: 1 }));
-
-// Cache invalidation
-queryClient.invalidateQueries({ queryKey: magia.petstore.pathKey() });
+const { data } = useQuery(magia.github.GetUser.queryOptions({ login: "octocat" }));
 ```
 
 ## Quick Start
