@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMagia } from "../proxy";
+import { MagiaError } from "../error";
 import { tanstackQuery } from "../plugins/tanstack-query";
 import type { Manifest, MagiaConfig } from "../types";
 
@@ -145,15 +146,19 @@ describe("Integration: full DX flow", () => {
     expect(opts.queryKey).toEqual(["magia", "petstore", "listPets", { status: "available" }]);
   });
 
-  it("onError callback fires on HTTP error", async () => {
+  it("onError callback fires on HTTP error with MagiaError", async () => {
     const fetch = mockFetch({}, 500);
     globalThis.fetch = fetch;
     const onError = vi.fn();
 
     const magia = createMagia({ ...config, onError }, manifest) as any;
 
-    await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow("failed with 500");
+    await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow(MagiaError);
 
     expect(onError).toHaveBeenCalledOnce();
+    const err = onError.mock.calls[0][0];
+    expect(err).toBeInstanceOf(MagiaError);
+    expect(err.status).toBe(500);
+    expect(err.isServerError()).toBe(true);
   });
 });

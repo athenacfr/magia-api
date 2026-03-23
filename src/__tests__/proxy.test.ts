@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMagia } from "../proxy";
+import { MagiaError } from "../error";
 import type { Manifest, MagiaConfig } from "../types";
 
 const manifest: Manifest = {
@@ -135,16 +136,15 @@ describe("createMagia Proxy", () => {
     );
   });
 
-  it("throws on HTTP error and calls onError", async () => {
+  it("throws MagiaError on HTTP error and calls onError", async () => {
     const fetch = mockFetch({}, 404);
     globalThis.fetch = fetch;
     const onError = vi.fn();
 
     const magia = createMagia({ ...config, onError }, manifest) as any;
-    await expect(magia.petstore.getPetById.fetch({ petId: 999 })).rejects.toThrow(
-      "failed with 404",
-    );
+    await expect(magia.petstore.getPetById.fetch({ petId: 999 })).rejects.toThrow(MagiaError);
     expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(MagiaError);
   });
 
   it("passes extra query params from options", async () => {

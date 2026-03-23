@@ -43,13 +43,23 @@ export interface MagiaRawResponse<T> {
 // Operation types (used in .d.ts augmentation)
 // ---------------------------------------------------------------------------
 
+import type { MagiaError } from "./error";
+
 export interface MagiaOperation<TInput, TOutput, TErrors = {}> {
   fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>;
   fetch(input: TInput, opts: MagiaFetchOptions & { raw: true }): Promise<MagiaRawResponse<TOutput>>;
+  isError<TCode extends keyof TErrors>(
+    error: unknown,
+    code: TCode,
+  ): error is MagiaError & { status: TCode; data: TErrors[TCode] };
 }
 
 export interface MagiaMutation<TInput, TOutput, TErrors = {}> {
   fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>;
+  isError<TCode extends keyof TErrors>(
+    error: unknown,
+    code: TCode,
+  ): error is MagiaError & { status: TCode; data: TErrors[TCode] };
 }
 
 // ---------------------------------------------------------------------------
@@ -169,5 +179,5 @@ export interface MagiaPluginOptions {
 export interface MagiaConfig {
   apis: Record<string, MagiaApiConfig>;
   plugins?: MagiaPluginOptions;
-  onError?: (error: Error) => void;
+  onError?: (error: MagiaError) => void;
 }

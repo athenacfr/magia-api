@@ -32,7 +32,7 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
 
   // Imports — only include TQ types if any API uses it
   const anyTq = Object.values(apis).some((a) => hasTanStackQuery(a.plugins));
-  const coreTypes = ["Manifest", "MagiaOperation", "MagiaMutation"];
+  const coreTypes = ["Manifest", "MagiaOperation", "MagiaMutation", "MagiaError"];
   if (anyTq) coreTypes.push("MagiaTanStackQuery", "MagiaTanStackMutation");
   lines.push(`import type { ${coreTypes.join(", ")} } from 'magia-api'`);
   for (const [apiName, api] of Object.entries(apis)) {
@@ -90,18 +90,21 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
       // Check if Hey API actually exported these types
       const dataTypeName = `${capName}Data`;
       const responseTypeName = `${capName}Response`;
+      const errorsTypeName = `${capName}Errors`;
       const hasDataType = api.exportedTypes.has(dataTypeName);
       const hasResponseType = api.exportedTypes.has(responseTypeName);
+      const hasErrorsType = api.exportedTypes.has(errorsTypeName);
 
       const reqType = hasParams && hasDataType ? `FlatInput<${ns}.${dataTypeName}>` : "void";
       const resType = hasResponseType ? `${ns}.${responseTypeName}` : "void";
+      const errType = hasErrorsType ? `${ns}.${errorsTypeName}` : "{}";
 
       if (mutation) {
-        let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}>`;
+        let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
         if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
         lines.push(line);
       } else {
-        let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}>`;
+        let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
         if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
         lines.push(line);
       }

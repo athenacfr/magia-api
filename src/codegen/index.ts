@@ -122,7 +122,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
       // 6. Scan Hey API output for available type names
       const indexContent = await readFile(resolve(typesDir, "index.ts"), "utf-8");
       const exportedTypes = new Set(
-        [...indexContent.matchAll(/\b(\w+(?:Data|Response))\b/g)].map((m) => m[1]),
+        [...indexContent.matchAll(/\b(\w+(?:Data|Response|Errors))\b/g)].map((m) => m[1]),
       );
 
       // 7. Collect for gen file

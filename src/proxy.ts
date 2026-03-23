@@ -1,4 +1,5 @@
 import type { Manifest, ManifestEntry, MagiaConfig, MagiaFetchOptions } from "./types";
+import { MagiaError } from "./error";
 import { resolveTanStackQueryProp } from "./plugins/tanstack-query";
 
 // ---------------------------------------------------------------------------
@@ -131,20 +132,52 @@ async function dispatch(
   const configHeaders = await resolveHeaders(apiConfig);
   const inputHeaders = extractHeaders(entry, input);
 
-  const response = await fetch(url, {
-    method: entry.method,
-    headers: {
-      ...(body != null ? { "Content-Type": "application/json" } : {}),
-      ...configHeaders,
-      ...inputHeaders,
-      ...opts.headers,
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-    signal: opts.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: entry.method,
+      headers: {
+        ...(body != null ? { "Content-Type": "application/json" } : {}),
+        ...configHeaders,
+        ...inputHeaders,
+        ...opts.headers,
+      },
+      body: body != null ? JSON.stringify(body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (fetchErr) {
+    const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
+    const error = new MagiaError(
+      isAbort
+        ? `${entry.method} ${entry.path} was aborted`
+        : `${entry.method} ${entry.path} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+      {
+        status: 0,
+        code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
+        api: apiName,
+        operation: operationName,
+        data: undefined,
+      },
+    );
+    config.onError?.(error);
+    throw error;
+  }
 
   if (!response.ok) {
-    const error = new Error(`${entry.method} ${url} failed with ${response.status}`);
+    let errorData: unknown;
+    try {
+      errorData = await response.json();
+    } catch {
+      errorData = undefined;
+    }
+    const error = new MagiaError(`${entry.method} ${entry.path} failed with ${response.status}`, {
+      status: response.status,
+      code: String(response.status),
+      api: apiName,
+      operation: operationName,
+      data: errorData,
+      response,
+    });
     config.onError?.(error);
     throw error;
   }
@@ -171,6 +204,15 @@ function createProxy(config: MagiaConfig, manifest: Manifest, path: string[]): u
       if (prop === "fetch" && path.length === 2) {
         return (input?: Record<string, unknown>, opts?: MagiaFetchOptions) =>
           dispatch(config, path[0], path[1], manifest, input, opts);
+      }
+
+      // .isError() on operation level — type guard for MagiaError with specific status
+      if (prop === "isError" && path.length === 2) {
+        return (error: unknown, code: number | string): error is MagiaError =>
+          error instanceof MagiaError &&
+          error.api === path[0] &&
+          error.operation === path[1] &&
+          (typeof code === "number" ? error.status === code : error.code === code);
       }
 
       // .pathKey() on API level (path = [apiName])

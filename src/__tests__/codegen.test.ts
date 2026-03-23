@@ -201,6 +201,49 @@ describe("generateGenFile", () => {
     expect(source).toContain("import type { Manifest, MagiaOperation, MagiaMutation");
   });
 
+  it("includes error types when exportedTypes has *Errors", () => {
+    const spec = parseSpec(FIXTURE_TEXT);
+    const ops = extractOperations(spec);
+    const exportedTypesWithErrors = mockExportedTypes(ops);
+    // Add error types like Hey API would generate
+    for (const op of ops) {
+      const cap = op.operationName[0].toUpperCase() + op.operationName.slice(1);
+      exportedTypesWithErrors.add(`${cap}Errors`);
+    }
+
+    const source = generateGenFile({
+      petstore: {
+        operations: ops,
+        plugins: [],
+        typesImportPath: "../node_modules/.magia/internals/petstore",
+        exportedTypes: exportedTypesWithErrors,
+      },
+    });
+
+    // Error types should appear in operation type definitions
+    expect(source).toContain("petstoreTypes.GetPetByIdErrors");
+    expect(source).toContain("petstoreTypes.AddPetErrors");
+  });
+
+  it("uses empty errors when no *Errors type exported", () => {
+    const spec = parseSpec(FIXTURE_TEXT);
+    const ops = extractOperations(spec);
+    // No *Errors in exported types
+    const source = generateGenFile({
+      petstore: {
+        operations: ops,
+        plugins: [],
+        typesImportPath: "../node_modules/.magia/internals/petstore",
+        exportedTypes: mockExportedTypes(ops),
+      },
+    });
+
+    // Should use {} (empty) for error types
+    expect(source).not.toContain("Errors");
+    // But should still have MagiaError in imports
+    expect(source).toContain("MagiaError");
+  });
+
   it("omits TQ types when plugin not configured", () => {
     const spec = parseSpec(FIXTURE_TEXT);
     const ops = extractOperations(spec);

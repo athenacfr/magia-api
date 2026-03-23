@@ -1,6 +1,7 @@
 // Public API
 export { defineConfig } from "./config";
 export { createMagia } from "./proxy";
+export { MagiaError } from "./error";
 export { tanstackQuery } from "./plugins/tanstack-query";
 
 // Types — used in magia.gen.ts and user code
