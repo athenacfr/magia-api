@@ -199,7 +199,7 @@ describe("generateGenFile", () => {
     expect(source).toContain(
       "import type * as petstoreTypes from '../node_modules/.magia/internals/petstore'",
     );
-    expect(source).toContain("import type { Manifest, MagiaOperation, MagiaMutation");
+    expect(source).toContain("import type { Manifest, ManifestApi, MagiaOperation, MagiaMutation");
   });
 
   it("includes error types when exportedTypes has *Errors", () => {

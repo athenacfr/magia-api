@@ -3,7 +3,14 @@ import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
 
 import type { DefineConfigInput, MagiaPlugin, GraphQLApiDefConfig } from "../types";
 import { resolveSchema } from "../schema";
-import { loadChecksums, saveChecksums, hasSchemaChanged, type ChecksumStore } from "../checksum";
+import {
+  loadChecksums,
+  saveChecksums,
+  hasSchemaChanged,
+  diffOperations,
+  type ChecksumStore,
+  type OperationDiff,
+} from "../checksum";
 import { parseSpec } from "./parser";
 import { extractOperations, type ExtractedOperation } from "./extractor";
 import { generateTypes, writeSpecFile } from "./hey-api";
@@ -21,7 +28,7 @@ export interface GenerateOptions {
 
 export interface GenerateResult {
   genFilePath: string;
-  apis: Record<string, { operations: number; typesDir: string }>;
+  apis: Record<string, { operations: number; typesDir: string; diff: OperationDiff }>;
   skipped: string[];
   errors: Array<{ apiName: string; error: Error }>;
 }
@@ -221,7 +228,9 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
           genFilePath,
         );
         genApis[apiName] = genApi;
-        result.apis[apiName] = { operations: operationCount, typesDir };
+        const opNames = genApi.operations.map((o) => o.operationName);
+        const diff = diffOperations(checksums, apiName, opNames);
+        result.apis[apiName] = { operations: operationCount, typesDir, diff };
       } else if (apiConfig.type === "graphql") {
         const { genApi, operationCount, typesDir } = await generateGraphQLApi(
           apiName,
@@ -232,7 +241,9 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
           genFilePath,
         );
         genApis[apiName] = genApi;
-        result.apis[apiName] = { operations: operationCount, typesDir };
+        const opNames = genApi.operations.map((o) => o.operationName);
+        const diff = diffOperations(checksums, apiName, opNames);
+        result.apis[apiName] = { operations: operationCount, typesDir, diff };
       }
     } catch (err) {
       result.errors.push({

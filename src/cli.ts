@@ -61,7 +61,13 @@ async function runGenerate(filter?: string[], force?: boolean) {
 
     // Report results
     for (const [apiName, api] of Object.entries(result.apis)) {
-      console.log(`  ${apiName}: ${api.operations} operations`);
+      const parts = [`${api.operations} operations`];
+      if (api.diff.added.length > 0) parts.push(`+${api.diff.added.length} new`);
+      if (api.diff.removed.length > 0) parts.push(`-${api.diff.removed.length} removed`);
+      console.log(`  ${apiName}: ${parts.join(", ")}`);
+      if (api.diff.removed.length > 0) {
+        console.warn(`    removed: ${api.diff.removed.join(", ")}`);
+      }
     }
 
     // Report skipped

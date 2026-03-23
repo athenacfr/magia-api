@@ -40,7 +40,7 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
 
   // Imports — only include TQ types if any API uses it
   const anyTq = Object.values(apis).some((a) => hasTanStackQuery(a.plugins));
-  const coreTypes = ["Manifest", "MagiaOperation", "MagiaMutation", "MagiaError"];
+  const coreTypes = ["Manifest", "ManifestApi", "MagiaOperation", "MagiaMutation", "MagiaError"];
   if (anyTq) coreTypes.push("MagiaTanStackQuery", "MagiaTanStackMutation");
   lines.push(`import type { ${coreTypes.join(", ")} } from 'magia-api'`);
   for (const [apiName, api] of Object.entries(apis)) {
@@ -61,37 +61,42 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
     lines.push(``);
   }
 
-  // ── Runtime: manifest ──
-  lines.push(`export const manifest: Manifest = {`);
+  // ── Runtime: per-API manifests (tree-shakeable) ──
+  const apiNames = Object.keys(apis);
   for (const [apiName, api] of Object.entries(apis)) {
-    lines.push(`  ${JSON.stringify(apiName)}: {`);
-
     const pluginsList = api.plugins.map((p) => `{ name: ${JSON.stringify(p.name)} }`).join(", ");
-    lines.push(`    plugins: [${pluginsList}],`);
-
-    lines.push(`    operations: {`);
+    lines.push(`export const ${apiName}Manifest: ManifestApi = {`);
+    lines.push(`  plugins: [${pluginsList}],`);
+    lines.push(`  operations: {`);
 
     if (api.apiType === "rest") {
       for (const op of api.operations) {
-        lines.push(`      ${JSON.stringify(op.operationName)}: {`);
-        lines.push(`        type: "rest",`);
-        lines.push(`        method: ${JSON.stringify(op.entry.method)},`);
-        lines.push(`        path: ${JSON.stringify(op.entry.path)},`);
-        lines.push(`        params: ${JSON.stringify(op.entry.params)},`);
-        lines.push(`      },`);
+        lines.push(`    ${JSON.stringify(op.operationName)}: {`);
+        lines.push(`      type: "rest",`);
+        lines.push(`      method: ${JSON.stringify(op.entry.method)},`);
+        lines.push(`      path: ${JSON.stringify(op.entry.path)},`);
+        lines.push(`      params: ${JSON.stringify(op.entry.params)},`);
+        lines.push(`    },`);
       }
     } else {
       for (const op of api.operations) {
-        lines.push(`      ${JSON.stringify(op.operationName)}: {`);
-        lines.push(`        type: "graphql",`);
-        lines.push(`        kind: ${JSON.stringify(op.kind)},`);
-        lines.push(`        document: ${JSON.stringify(op.document)},`);
-        lines.push(`      },`);
+        lines.push(`    ${JSON.stringify(op.operationName)}: {`);
+        lines.push(`      type: "graphql",`);
+        lines.push(`      kind: ${JSON.stringify(op.kind)},`);
+        lines.push(`      document: ${JSON.stringify(op.document)},`);
+        lines.push(`    },`);
       }
     }
 
-    lines.push(`    },`);
     lines.push(`  },`);
+    lines.push(`}`);
+    lines.push(``);
+  }
+
+  // ── Runtime: full manifest (composed from per-API) ──
+  lines.push(`export const manifest: Manifest = {`);
+  for (const apiName of apiNames) {
+    lines.push(`  ${JSON.stringify(apiName)}: ${apiName}Manifest,`);
   }
   lines.push(`}`);
   lines.push(``);

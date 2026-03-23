@@ -44,6 +44,15 @@ export function magiaApi(): Plugin {
         if (skippedCount > 0) parts.push(`${skippedCount} unchanged (skipped)`);
         console.log(`[magia-api] ${parts.join(", ")}`);
 
+        // Warn about removed operations
+        for (const [apiName, api] of Object.entries(result.apis)) {
+          if (api.diff.removed.length > 0) {
+            console.warn(
+              `[magia-api] ${apiName}: ${api.diff.removed.length} operations removed: ${api.diff.removed.join(", ")}`,
+            );
+          }
+        }
+
         if (config.command === "serve") {
           setupWatchers(cwd, magiaConfig);
         }

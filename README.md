@@ -127,11 +127,13 @@ src/magia.gen.ts
 
 ## Features
 
-- **Zero ceremony** — No codegen scripts. Vite plugin generates on start.
+- **Zero ceremony** — No codegen scripts. Bundler plugin generates on start.
+- **Any bundler** — Vite, Rollup, Webpack, esbuild. Or CLI for scripts and CI.
 - **Fully typed** — TypeScript types from your OpenAPI/GraphQL schema. No manual types.
 - **TanStack Query** — `queryOptions()`, `queryKey()`, `mutationOptions()` via plugin.
 - **Flat parameters** — `{ petId: 1, status: "available" }` auto-mapped to path/query/body.
 - **Incremental** — Hash-based skip for unchanged schemas. Fast rebuilds.
+- **Tree-shakeable** — Per-API manifest exports. Only bundle what you use.
 - **Multiple APIs** — One config, many APIs. REST and GraphQL.
 - **CLI** — `magia-api generate` for CI. `magia-api validate` for checks.
 - **Error handling** — `MagiaError` with typed status codes and `.isError()` type guard.
@@ -171,7 +173,7 @@ magia-api init                  # Scaffold config file
 - [TanStack Query Plugin](docs/plugins/tanstack-query.md)
 - [Error Handling](docs/error-handling.md)
 - [CLI Reference](docs/cli.md)
-- [Vite Plugin](docs/vite-plugin.md)
+- [Bundler Plugins](docs/bundler-plugins.md) (Vite, Rollup, Webpack, esbuild)
 
 ### Guides
 
