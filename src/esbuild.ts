@@ -1,19 +1,29 @@
 import type { Plugin } from "esbuild";
+import { resolve } from "node:path";
+import { watch, type FSWatcher } from "node:fs";
 import { resolveConfig } from "./loader";
 import { generate } from "./codegen/index";
+import { classifySource } from "./schema";
+import type { DefineConfigInput } from "./types";
 
 export interface MagiaApiOptions {
   /** Working directory (default: process.cwd()) */
   cwd?: string;
   /** Force regeneration (default: false) */
   force?: boolean;
+  /** Watch local schema files for changes (default: true) */
+  watch?: boolean;
 }
 
 /**
  * esbuild plugin for magia-api.
  * Triggers codegen at the start of each build.
+ * Optionally watches local schema files for changes.
  */
 export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
+  const watchers: FSWatcher[] = [];
+  let watchersSetUp = false;
+
   return {
     name: "magia-api",
 
@@ -36,7 +46,16 @@ export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
 
           const opCount = Object.values(result.apis).reduce((sum, a) => sum + a.operations, 0);
           const apiCount = Object.keys(result.apis).length;
-          console.log(`[magia-api] Generated ${opCount} operations from ${apiCount} API(s)`);
+          const skipped = result.skipped.length;
+          const parts = [`Generated ${opCount} operations from ${apiCount} API(s)`];
+          if (skipped > 0) parts.push(`${skipped} unchanged (skipped)`);
+          console.log(`[magia-api] ${parts.join(", ")}`);
+
+          // Set up file watchers for local schemas (only once)
+          if (opts.watch !== false && !watchersSetUp) {
+            setupWatchers(cwd, config);
+            watchersSetUp = true;
+          }
         } catch (err) {
           return {
             errors: [
@@ -48,6 +67,40 @@ export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
           };
         }
       });
+
+      // Clean up watchers when esbuild disposes the plugin
+      build.onEnd(() => {
+        // onEnd fires after each build — watchers persist across rebuilds
+      });
     },
   };
+
+  function setupWatchers(cwd: string, config: DefineConfigInput) {
+    for (const [apiName, apiConfig] of Object.entries(config.apis)) {
+      const kind = classifySource(apiConfig.schema);
+      const shouldWatch = apiConfig.schemaWatch ?? kind === "local-file";
+
+      if (!shouldWatch || kind !== "local-file") continue;
+
+      const schemaPath = resolve(cwd, apiConfig.schema as string);
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const watcher = watch(schemaPath, () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          console.log(`[magia-api] Schema changed: ${apiName}, regenerating...`);
+          try {
+            await generate({ config, cwd, filter: [apiName] });
+          } catch (err) {
+            console.error(
+              `[magia-api] Regeneration failed:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }, 200);
+      });
+
+      watchers.push(watcher);
+    }
+  }
 }

@@ -20,6 +20,8 @@ export type {
   MagiaPlugin,
   MagiaFetchOptions,
   MagiaRawResponse,
+  MagiaSubscribeOptions,
+  MagiaSSEOperation,
   // Operation types (used in module augmentation)
   MagiaOperation,
   MagiaMutation,
@@ -30,5 +32,9 @@ export type {
   Manifest,
   ManifestApi,
   ManifestEntry,
+  LazyManifest,
+  LazyManifestApi,
   ParamLocation,
+  PaginationMeta,
+  PaginationStyle,
 } from "./types";

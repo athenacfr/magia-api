@@ -270,4 +270,111 @@ describe("createMagia Proxy", () => {
     const { petstore } = magia.shorthands();
     expect(petstore.pathKey()).toEqual(["magia", "petstore"]);
   });
+
+  // ── File upload (multipart) ──
+
+  it("sends FormData for multipart operations", async () => {
+    const fetch = mockFetch({ url: "https://example.com/image.png" });
+    globalThis.fetch = fetch;
+
+    const multipartManifest: Manifest = {
+      petstore: {
+        plugins: [],
+        operations: {
+          uploadImage: {
+            type: "rest",
+            method: "POST",
+            path: "/pet/{petId}/uploadImage",
+            params: { petId: "path", body: "body" },
+            multipart: true,
+          },
+        },
+      },
+    };
+
+    const magia = createMagia({ ...config, manifest: multipartManifest }) as any;
+    const file = new File(["image data"], "photo.png", { type: "image/png" });
+    await magia.petstore.uploadImage.fetch({ petId: 1, file });
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://petstore.example.com/pet/1/uploadImage");
+    expect(init.body).toBeInstanceOf(FormData);
+    // Content-Type should NOT be set (let runtime set multipart boundary)
+    expect(init.headers["Content-Type"]).toBeUndefined();
+  });
+
+  // ── SSE / Subscribe ──
+
+  it("subscribe returns AsyncIterable for SSE endpoints", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"id":1}\n\n'));
+        controller.enqueue(encoder.encode('data: {"id":2}\n\n'));
+        controller.close();
+      },
+    });
+
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: stream,
+    });
+    globalThis.fetch = fetch;
+
+    const sseManifest: Manifest = {
+      ai: {
+        plugins: [],
+        operations: {
+          streamChat: {
+            type: "rest",
+            method: "POST",
+            path: "/chat/stream",
+            params: { body: "body" },
+            sse: true,
+          },
+        },
+      },
+    };
+
+    const magia = createMagia({
+      manifest: sseManifest,
+      apis: { ai: { baseUrl: "https://ai.example.com" } },
+    }) as any;
+
+    const events: unknown[] = [];
+    for await (const event of magia.ai.streamChat.subscribe({ message: "hello" })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{ id: 1 }, { id: 2 }]);
+    const [, init] = fetch.mock.calls[0];
+    expect(init.headers.Accept).toBe("text/event-stream");
+  });
+
+  it("subscribe throws for non-SSE operations", async () => {
+    const magia = createMagia({ ...config, manifest }) as any;
+    const iter = magia.petstore.getPetById.subscribe({ petId: 1 });
+    const result = iter[Symbol.asyncIterator]().next();
+    await expect(result).rejects.toThrow("does not support .subscribe()");
+  });
+
+  // ── Lazy manifests ──
+
+  it("works with lazy (async) manifests", async () => {
+    const fetch = mockFetch({ id: 1, name: "Rex" });
+    globalThis.fetch = fetch;
+
+    const lazyManifest = {
+      petstore: async () => manifest.petstore,
+    };
+
+    const magia = createMagia({
+      manifest: lazyManifest as any,
+      apis: config.apis,
+    }) as any;
+
+    const pet = await magia.petstore.getPetById.fetch({ petId: 1 });
+    expect(pet).toEqual({ id: 1, name: "Rex" });
+  });
 });

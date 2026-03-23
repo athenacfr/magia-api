@@ -20,6 +20,7 @@ export interface MagiaApiOptions {
 export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
   const watchers: ReturnType<typeof watch>[] = [];
   let magiaConfig: DefineConfigInput;
+  let watchersSetUp = false;
 
   return {
     name: "magia-api",
@@ -41,7 +42,16 @@ export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
 
         const opCount = Object.values(result.apis).reduce((sum, a) => sum + a.operations, 0);
         const apiCount = Object.keys(result.apis).length;
-        console.log(`[magia-api] Generated ${opCount} operations from ${apiCount} API(s)`);
+        const skippedCount = result.skipped.length;
+        const parts = [`Generated ${opCount} operations from ${apiCount} API(s)`];
+        if (skippedCount > 0) parts.push(`${skippedCount} unchanged (skipped)`);
+        console.log(`[magia-api] ${parts.join(", ")}`);
+
+        // Set up file watchers for local schemas (only once)
+        if (opts.watch !== false && !watchersSetUp) {
+          setupWatchers(cwd, magiaConfig);
+          watchersSetUp = true;
+        }
       } catch (err) {
         this.error(`magia-api generation failed: ${err instanceof Error ? err.message : err}`);
       }
@@ -50,6 +60,36 @@ export function magiaApi(opts: MagiaApiOptions = {}): Plugin {
     closeBundle() {
       for (const w of watchers) w.close();
       watchers.length = 0;
+      watchersSetUp = false;
     },
   };
+
+  function setupWatchers(cwd: string, config: DefineConfigInput) {
+    for (const [apiName, apiConfig] of Object.entries(config.apis)) {
+      const kind = classifySource(apiConfig.schema);
+      const shouldWatch = apiConfig.schemaWatch ?? kind === "local-file";
+
+      if (!shouldWatch || kind !== "local-file") continue;
+
+      const schemaPath = resolve(cwd, apiConfig.schema as string);
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const watcher = watch(schemaPath, () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          console.log(`[magia-api] Schema changed: ${apiName}, regenerating...`);
+          try {
+            await generate({ config, cwd, filter: [apiName] });
+          } catch (err) {
+            console.error(
+              `[magia-api] Regeneration failed:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }, 200);
+      });
+
+      watchers.push(watcher);
+    }
+  }
 }

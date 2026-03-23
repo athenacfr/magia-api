@@ -1,4 +1,4 @@
-import type { MagiaConfig } from "../types";
+import type { MagiaConfig, ManifestEntry } from "../types";
 import { dispatch } from "../proxy";
 
 /**
@@ -57,6 +57,35 @@ export function resolveTanStackQueryProp(
 
   if (prop === "mutationKey") {
     return () => ["magia", apiName, operationName] as const;
+  }
+
+  if (prop === "infiniteQueryOptions") {
+    const apiManifest = config.manifest[apiName];
+    const entry: ManifestEntry | undefined = apiManifest?.operations[operationName];
+    const pagination = entry && "pagination" in entry ? entry.pagination : undefined;
+
+    return (
+      input?: Record<string, unknown>,
+      opts?: { getNextPageParam?: (lastPage: unknown) => unknown },
+    ) => ({
+      queryKey:
+        input != null
+          ? (["magia", apiName, operationName, input] as const)
+          : (["magia", apiName, operationName] as const),
+      queryFn: (ctx: { signal: AbortSignal; pageParam: unknown }) => {
+        const mergedInput = { ...input };
+        // Merge pageParam into the correct input field based on pagination metadata
+        if (ctx.pageParam != null && pagination) {
+          mergedInput[pagination.pageParam] = ctx.pageParam;
+        }
+        return dispatch(config, apiName, operationName, mergedInput, {
+          signal: ctx.signal,
+        });
+      },
+      initialPageParam:
+        pagination?.style === "page" ? 1 : pagination?.style === "offset" ? 0 : undefined,
+      ...(opts?.getNextPageParam ? { getNextPageParam: opts.getNextPageParam } : {}),
+    });
   }
 
   return undefined;

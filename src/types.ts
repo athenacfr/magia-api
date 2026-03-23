@@ -4,17 +4,35 @@
 
 export type ParamLocation = "path" | "query" | "body" | "header";
 
+export type PaginationStyle = "offset" | "cursor" | "page";
+
+export interface PaginationMeta {
+  style: PaginationStyle;
+  /** The param that changes per page (e.g. "offset", "cursor", "page") */
+  pageParam: string;
+  /** The size param (e.g. "limit", "pageSize") */
+  sizeParam?: string;
+}
+
 export interface RestManifestEntry {
   type: "rest";
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   path: string; // e.g. "/pet/{petId}"
   params: Record<string, ParamLocation>;
+  /** true when requestBody has multipart/form-data content type */
+  multipart?: boolean;
+  /** true when response is text/event-stream (SSE) */
+  sse?: boolean;
+  /** Pagination metadata for infinite query support */
+  pagination?: PaginationMeta;
 }
 
 export interface GraphQLManifestEntry {
   type: "graphql";
   kind: "query" | "mutation" | "subscription";
   document: string; // compiled GraphQL document string
+  /** Pagination metadata for infinite query support (Relay-style) */
+  pagination?: PaginationMeta;
 }
 
 export type ManifestEntry = RestManifestEntry | GraphQLManifestEntry;
@@ -31,6 +49,10 @@ export interface ManifestApi {
 export type Manifest = Record<string, ManifestApi>;
 //                           ^ api name
 
+/** Lazy manifest — values can be async functions that return ManifestApi (for code splitting) */
+export type LazyManifestApi = ManifestApi | (() => Promise<ManifestApi>);
+export type LazyManifest = Record<string, LazyManifestApi>;
+
 // ---------------------------------------------------------------------------
 // Fetch options & response
 // ---------------------------------------------------------------------------
@@ -40,6 +62,16 @@ export interface MagiaFetchOptions {
   raw?: boolean;
   query?: Record<string, unknown>;
   headers?: Record<string, string>;
+}
+
+export interface MagiaSubscribeOptions {
+  signal?: AbortSignal;
+  reconnect?: boolean;
+  lastEventId?: string;
+}
+
+export interface MagiaSSEOperation<TInput, TEvent> {
+  subscribe(input: TInput, opts?: MagiaSubscribeOptions): AsyncIterable<TEvent>;
 }
 
 export interface MagiaRawResponse<T> {
@@ -187,7 +219,7 @@ export interface MagiaPluginOptions {
 // createMagia config
 // ---------------------------------------------------------------------------
 
-export interface MagiaConfig<TManifest extends Manifest = Manifest> {
+export interface MagiaConfig<TManifest extends Manifest | LazyManifest = Manifest> {
   /** Generated manifest from magia.gen.ts */
   manifest: TManifest;
   /** Per-API runtime config — keys must match manifest API names */

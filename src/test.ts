@@ -8,6 +8,7 @@ import { MagiaError } from "./error";
 export type MockResponse<T = unknown> =
   | { data: T }
   | { error: { status: number; data?: unknown; message?: string } }
+  | { events: T[] }
   | ((input: Record<string, unknown>) => T);
 
 export type MockOperations = Record<string, MockResponse>;
@@ -59,7 +60,12 @@ function resolveTestMock(
     });
   }
 
-  return mock.data;
+  if ("events" in mock) {
+    // .subscribe() mock used with .fetch() — return first event
+    return mock.events[0];
+  }
+
+  return (mock as { data: unknown }).data;
 }
 
 function createTestProxy(mocks: MockApis, path: string[]): unknown {
@@ -140,6 +146,51 @@ function createTestProxy(mocks: MockApis, path: string[]): unknown {
       if (prop === "mutationKey" && path.length === 2) {
         const [apiName, operationName] = path;
         return () => ["magia", apiName, operationName] as const;
+      }
+
+      // .subscribe() on operation level — returns AsyncIterable from events array
+      if (prop === "subscribe" && path.length === 2) {
+        const [apiName, operationName] = path;
+        const mock = mocks[apiName]?.[operationName];
+        return (input: Record<string, unknown> = {}) => {
+          if (!mock) {
+            throw new Error(
+              `No mock defined for ${apiName}.${operationName}. ` +
+                `Add it to createTestMagia({ ${apiName}: { ${operationName}: { events: [...] } } })`,
+            );
+          }
+          if (typeof mock === "object" && "events" in mock) {
+            return (async function* () {
+              for (const event of mock.events) {
+                yield event;
+              }
+            })();
+          }
+          throw new Error(
+            `Mock for ${apiName}.${operationName} does not have 'events' array for .subscribe()`,
+          );
+        };
+      }
+
+      // .infiniteQueryOptions()
+      if (prop === "infiniteQueryOptions" && path.length === 2) {
+        const [apiName, operationName] = path;
+        const mock = mocks[apiName]?.[operationName];
+        return (
+          input: Record<string, unknown> = {},
+          opts?: { getNextPageParam?: (lastPage: unknown) => unknown },
+        ) => ({
+          queryKey:
+            Object.keys(input).length > 0
+              ? (["magia", apiName, operationName, input] as const)
+              : (["magia", apiName, operationName] as const),
+          queryFn: () =>
+            Promise.resolve().then(() =>
+              mock ? resolveTestMock(mock, input, apiName, operationName) : undefined,
+            ),
+          initialPageParam: undefined,
+          ...(opts?.getNextPageParam ? { getNextPageParam: opts.getNextPageParam } : {}),
+        });
       }
 
       return createTestProxy(mocks, [...path, prop]);

@@ -6,7 +6,7 @@ import * as typescriptPlugin from "@graphql-codegen/typescript";
 import * as typescriptOperationsPlugin from "@graphql-codegen/typescript-operations";
 import { parse, type DocumentNode } from "graphql";
 import { glob } from "../glob";
-import type { GraphQLManifestEntry } from "../types";
+import type { GraphQLManifestEntry, PaginationMeta } from "../types";
 
 export interface GraphQLCodegenOptions {
   apiName: string;
@@ -24,6 +24,7 @@ export interface GraphQLExtractedOperation {
   operationName: string;
   kind: "query" | "mutation" | "subscription";
   document: string;
+  pagination?: PaginationMeta;
 }
 
 /**
@@ -47,6 +48,39 @@ async function loadDocuments(
 }
 
 /**
+ * Detect Relay-style pagination from variable definitions.
+ */
+function detectGraphQLPagination(
+  def: import("graphql").OperationDefinitionNode,
+): PaginationMeta | undefined {
+  const varNames = new Set(
+    (def.variableDefinitions ?? []).map((v) => v.variable.name.value.toLowerCase()),
+  );
+  const varOrigNames = (def.variableDefinitions ?? []).map((v) => v.variable.name.value);
+
+  // Relay forward: first/after
+  if (varNames.has("first") && varNames.has("after")) {
+    const afterName = varOrigNames.find((n) => n.toLowerCase() === "after")!;
+    return { style: "cursor", pageParam: afterName };
+  }
+
+  // Relay backward: last/before
+  if (varNames.has("last") && varNames.has("before")) {
+    const beforeName = varOrigNames.find((n) => n.toLowerCase() === "before")!;
+    return { style: "cursor", pageParam: beforeName };
+  }
+
+  // offset/limit
+  if (varNames.has("offset") && varNames.has("limit")) {
+    const offsetName = varOrigNames.find((n) => n.toLowerCase() === "offset")!;
+    const limitName = varOrigNames.find((n) => n.toLowerCase() === "limit")!;
+    return { style: "offset", pageParam: offsetName, sizeParam: limitName };
+  }
+
+  return undefined;
+}
+
+/**
  * Extract operation info from parsed GraphQL documents.
  */
 export function extractGraphQLOperations(
@@ -57,10 +91,12 @@ export function extractGraphQLOperations(
   for (const { document, rawSDL } of documents) {
     for (const def of document.definitions) {
       if (def.kind === "OperationDefinition" && def.name) {
+        const pagination = def.operation === "query" ? detectGraphQLPagination(def) : undefined;
         operations.push({
           operationName: def.name.value,
           kind: def.operation,
           document: rawSDL.trim(),
+          ...(pagination && { pagination }),
         });
       }
     }

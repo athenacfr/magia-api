@@ -161,6 +161,52 @@ describe("createTestMagia", () => {
     await expect(opts.queryFn()).rejects.toThrow(MagiaError);
   });
 
+  // ── subscribe ──
+
+  it("subscribe returns AsyncIterable from events mock", async () => {
+    const magia = createTestMagia({
+      ai: {
+        streamChat: { events: [{ text: "hello" }, { text: "world" }] },
+      },
+    });
+
+    const events: unknown[] = [];
+    for await (const event of magia.ai.streamChat.subscribe({ message: "hi" })) {
+      events.push(event);
+    }
+    expect(events).toEqual([{ text: "hello" }, { text: "world" }]);
+  });
+
+  it("subscribe throws for undefined mock", () => {
+    expect(() => magia.petstore.unknownOp.subscribe({})).toThrow(
+      "No mock defined for petstore.unknownOp",
+    );
+  });
+
+  // ── infiniteQueryOptions ──
+
+  it("infiniteQueryOptions returns correct shape", async () => {
+    const opts = magia.petstore.listPets.infiniteQueryOptions({ status: "available" });
+
+    expect(opts.queryKey).toEqual(["magia", "petstore", "listPets", { status: "available" }]);
+    expect(opts.queryFn).toBeTypeOf("function");
+
+    const data = await opts.queryFn();
+    expect(data).toEqual([
+      { id: 1, name: "Rex" },
+      { id: 2, name: "Buddy" },
+    ]);
+  });
+
+  it("infiniteQueryOptions passes getNextPageParam", () => {
+    const getNext = (last: unknown) => (last as any[]).length;
+    const opts = magia.petstore.listPets.infiniteQueryOptions(
+      { status: "available" },
+      { getNextPageParam: getNext },
+    );
+    expect(opts.getNextPageParam).toBe(getNext);
+  });
+
   // ── multiple APIs ──
 
   it("supports multiple APIs", async () => {

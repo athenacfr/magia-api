@@ -8,6 +8,7 @@ import { findConfigFile, loadConfig, resolveConfig } from "../loader";
 describe("defineConfig", () => {
   it("returns the config as-is (identity function)", () => {
     const input = {
+      output: "./src/magia.gen.ts",
       apis: {
         petstore: {
           type: "rest" as const,
@@ -60,6 +61,7 @@ describe("defineConfig", () => {
 
   it("accepts optional per-API config fields", () => {
     const config = defineConfig({
+      output: "./src/magia.gen.ts",
       apis: {
         test: {
           type: "rest",

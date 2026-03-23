@@ -47,6 +47,47 @@ describe("extractGraphQLOperations", () => {
       expect(typeof op.document).toBe("string");
     }
   });
+
+  it("detects Relay-style pagination (first/after)", () => {
+    const relaySDL = `query ListConnections($first: Int!, $after: String) {
+      connections(first: $first, after: $after) {
+        edges { node { id } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`;
+    const relayDoc = parse(relaySDL);
+    const ops = extractGraphQLOperations([{ document: relayDoc, rawSDL: relaySDL }]);
+
+    expect(ops).toHaveLength(1);
+    expect(ops[0].pagination).toEqual({
+      style: "cursor",
+      pageParam: "after",
+    });
+  });
+
+  it("detects offset/limit pagination in GraphQL", () => {
+    const sdl = `query ListItems($offset: Int!, $limit: Int!) {
+      items(offset: $offset, limit: $limit) { id name }
+    }`;
+    const doc = parse(sdl);
+    const ops = extractGraphQLOperations([{ document: doc, rawSDL: sdl }]);
+
+    expect(ops[0].pagination).toEqual({
+      style: "offset",
+      pageParam: "offset",
+      sizeParam: "limit",
+    });
+  });
+
+  it("does not detect pagination for mutations", () => {
+    const sdl = `mutation CreateItem($first: Int!, $after: String) {
+      createItem(first: $first, after: $after) { id }
+    }`;
+    const doc = parse(sdl);
+    const ops = extractGraphQLOperations([{ document: doc, rawSDL: sdl }]);
+
+    expect(ops[0].pagination).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -141,6 +141,145 @@ describe("extractOperations", () => {
     });
   });
 
+  it("detects multipart/form-data request body", () => {
+    const specMultipart = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/pet/{petId}/uploadImage": {
+            post: {
+              operationId: "uploadPetImage",
+              parameters: [
+                { name: "petId", in: "path", required: true, schema: { type: "integer" } },
+              ],
+              requestBody: {
+                content: {
+                  "multipart/form-data": {
+                    schema: {
+                      type: "object",
+                      properties: { file: { type: "string", format: "binary" } },
+                    },
+                  },
+                },
+              },
+              responses: { "200": { description: "OK" } },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specMultipart);
+    expect(ops).toHaveLength(1);
+    expect(ops[0].entry.multipart).toBe(true);
+  });
+
+  it("detects SSE endpoints from text/event-stream response", () => {
+    const specSSE = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/chat/stream": {
+            post: {
+              operationId: "streamChat",
+              requestBody: { content: { "application/json": { schema: {} } } },
+              responses: {
+                "200": {
+                  description: "SSE stream",
+                  content: { "text/event-stream": { schema: { type: "string" } } },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specSSE);
+    expect(ops).toHaveLength(1);
+    expect(ops[0].entry.sse).toBe(true);
+  });
+
+  it("detects offset/limit pagination", () => {
+    const specPaginated = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/items": {
+            get: {
+              operationId: "listItems",
+              parameters: [
+                { name: "offset", in: "query", schema: { type: "integer" } },
+                { name: "limit", in: "query", schema: { type: "integer" } },
+              ],
+              responses: { "200": { description: "OK" } },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specPaginated);
+    expect(ops[0].entry.pagination).toEqual({
+      style: "offset",
+      pageParam: "offset",
+      sizeParam: "limit",
+    });
+  });
+
+  it("detects cursor pagination", () => {
+    const specCursor = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/items": {
+            get: {
+              operationId: "listItems",
+              parameters: [
+                { name: "cursor", in: "query", schema: { type: "string" } },
+                { name: "limit", in: "query", schema: { type: "integer" } },
+              ],
+              responses: { "200": { description: "OK" } },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specCursor);
+    expect(ops[0].entry.pagination).toEqual({
+      style: "cursor",
+      pageParam: "cursor",
+    });
+  });
+
+  it("detects page/pageSize pagination", () => {
+    const specPage = parseSpec(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "Test", version: "1.0" },
+        paths: {
+          "/items": {
+            get: {
+              operationId: "listItems",
+              parameters: [
+                { name: "page", in: "query", schema: { type: "integer" } },
+                { name: "pageSize", in: "query", schema: { type: "integer" } },
+              ],
+              responses: { "200": { description: "OK" } },
+            },
+          },
+        },
+      }),
+    );
+    const ops = extractOperations(specPage);
+    expect(ops[0].entry.pagination).toEqual({
+      style: "page",
+      pageParam: "page",
+      sizeParam: "pageSize",
+    });
+  });
+
   it("generates fallback name when no operationId", () => {
     const specNoId = parseSpec(
       JSON.stringify({
@@ -245,6 +384,86 @@ describe("generateGenFile", () => {
     expect(source).not.toContain("Errors");
     // But should still have MagiaError in imports
     expect(source).toContain("MagiaError");
+  });
+
+  it("emits MagiaSSEOperation for SSE endpoints", () => {
+    const source = generateGenFile({
+      ai: {
+        apiType: "rest",
+        operations: [
+          {
+            operationName: "streamChat",
+            entry: {
+              type: "rest",
+              method: "POST",
+              path: "/chat/stream",
+              params: { body: "body" },
+              sse: true,
+            },
+          },
+        ],
+        plugins: [],
+        typesImportPath: "../node_modules/.magia/internals/ai",
+        exportedTypes: new Set(["StreamChatData", "StreamChatResponse"]),
+      },
+    });
+
+    expect(source).toContain("MagiaSSEOperation");
+    expect(source).toContain("streamChat: MagiaSSEOperation");
+    // SSE ops should NOT have MagiaOperation or MagiaMutation
+    expect(source).not.toContain("streamChat: MagiaOperation");
+  });
+
+  it("emits MagiaTanStackInfiniteQuery for paginated endpoints", () => {
+    const source = generateGenFile({
+      petstore: {
+        apiType: "rest",
+        operations: [
+          {
+            operationName: "listPets",
+            entry: {
+              type: "rest",
+              method: "GET",
+              path: "/pets",
+              params: { offset: "query", limit: "query" },
+              pagination: { style: "offset", pageParam: "offset", sizeParam: "limit" },
+            },
+          },
+        ],
+        plugins: [{ name: "tanstackQuery" }],
+        typesImportPath: "../node_modules/.magia/internals/petstore",
+        exportedTypes: new Set(["ListPetsData", "ListPetsResponse"]),
+      },
+    });
+
+    expect(source).toContain("MagiaTanStackInfiniteQuery");
+    expect(source).toContain("listPets: MagiaOperation");
+    expect(source).toContain("& MagiaTanStackInfiniteQuery");
+  });
+
+  it("emits multipart and pagination in manifest", () => {
+    const source = generateGenFile({
+      petstore: {
+        apiType: "rest",
+        operations: [
+          {
+            operationName: "uploadImage",
+            entry: {
+              type: "rest",
+              method: "POST",
+              path: "/pet/{petId}/uploadImage",
+              params: { petId: "path", body: "body" },
+              multipart: true,
+            },
+          },
+        ],
+        plugins: [],
+        typesImportPath: "../node_modules/.magia/internals/petstore",
+        exportedTypes: new Set(["UploadImageData", "UploadImageResponse"]),
+      },
+    });
+
+    expect(source).toContain("multipart: true");
   });
 
   it("omits TQ types when plugin not configured", () => {

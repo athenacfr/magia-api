@@ -40,8 +40,18 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
 
   // Imports — only include TQ types if any API uses it
   const anyTq = Object.values(apis).some((a) => hasTanStackQuery(a.plugins));
+  const anySSE = Object.values(apis).some((a) =>
+    a.apiType === "rest"
+      ? a.operations.some((op) => op.entry.sse)
+      : a.operations.some((op) => op.kind === "subscription"),
+  );
+  const anyInfinite = Object.values(apis).some((a) =>
+    a.operations.some((op) => ("entry" in op ? op.entry.pagination : op.pagination)),
+  );
   const coreTypes = ["Manifest", "ManifestApi", "MagiaOperation", "MagiaMutation", "MagiaError"];
+  if (anySSE) coreTypes.push("MagiaSSEOperation");
   if (anyTq) coreTypes.push("MagiaTanStackQuery", "MagiaTanStackMutation");
+  if (anyTq && anyInfinite) coreTypes.push("MagiaTanStackInfiniteQuery");
   lines.push(`import type { ${coreTypes.join(", ")} } from 'magia-api'`);
   for (const [apiName, api] of Object.entries(apis)) {
     lines.push(`import type * as ${apiName}Types from '${api.typesImportPath}'`);
@@ -76,6 +86,10 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
         lines.push(`      method: ${JSON.stringify(op.entry.method)},`);
         lines.push(`      path: ${JSON.stringify(op.entry.path)},`);
         lines.push(`      params: ${JSON.stringify(op.entry.params)},`);
+        if (op.entry.multipart) lines.push(`      multipart: true,`);
+        if (op.entry.sse) lines.push(`      sse: true,`);
+        if (op.entry.pagination)
+          lines.push(`      pagination: ${JSON.stringify(op.entry.pagination)},`);
         lines.push(`    },`);
       }
     } else {
@@ -84,6 +98,7 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
         lines.push(`      type: "graphql",`);
         lines.push(`      kind: ${JSON.stringify(op.kind)},`);
         lines.push(`      document: ${JSON.stringify(op.document)},`);
+        if (op.pagination) lines.push(`      pagination: ${JSON.stringify(op.pagination)},`);
         lines.push(`    },`);
       }
     }
@@ -100,6 +115,18 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
   }
   lines.push(`}`);
   lines.push(``);
+
+  // Lazy manifest for code splitting — each API loaded on first use
+  if (apiNames.length > 1) {
+    lines.push(`/** Lazy manifest — each API loaded on first use (for code splitting) */`);
+    lines.push(`export const lazyManifest = {`);
+    for (const apiName of apiNames) {
+      // Point to the per-API export from this same file — bundlers can split on dynamic import
+      lines.push(`  ${JSON.stringify(apiName)}: () => Promise.resolve(${apiName}Manifest),`);
+    }
+    lines.push(`}`);
+    lines.push(``);
+  }
 
   // ── Types: module augmentation ──
   lines.push(`declare module 'magia-api' {`);
@@ -145,6 +172,13 @@ function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boo
     const resType = hasResponseType ? `${ns}.${responseTypeName}` : "void";
     const errType = hasErrorsType ? `${ns}.${errorsTypeName}` : "{}";
 
+    // SSE endpoints get MagiaSSEOperation instead of the normal types
+    if (op.entry.sse) {
+      let line = `      ${op.operationName}: MagiaSSEOperation<${reqType}, ${resType}>`;
+      lines.push(line);
+      continue;
+    }
+
     if (isMut) {
       let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
       if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
@@ -152,6 +186,8 @@ function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boo
     } else {
       let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
       if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
+      if (tq && op.entry.pagination)
+        line += `\n        & MagiaTanStackInfiniteQuery<${reqType}, ${resType}>`;
       lines.push(line);
     }
   }
@@ -160,6 +196,7 @@ function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boo
 function emitGraphQLTypes(lines: string[], api: GenGraphQLApiInfo, ns: string, tq: boolean): void {
   for (const op of api.operations) {
     const isMut = op.kind === "mutation";
+    const isSub = op.kind === "subscription";
     const capName = capitalize(op.operationName);
 
     // graphql-codegen generates: GetUserQuery, GetUserQueryVariables
@@ -186,6 +223,12 @@ function emitGraphQLTypes(lines: string[], api: GenGraphQLApiInfo, ns: string, t
       reqType = api.exportedTypes.has(subVarsTypeName) ? `${ns}.${subVarsTypeName}` : "void";
     }
 
+    // GraphQL subscriptions get MagiaSSEOperation
+    if (isSub) {
+      lines.push(`      ${op.operationName}: MagiaSSEOperation<${reqType}, ${resType}>`);
+      continue;
+    }
+
     if (isMut) {
       let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}>`;
       if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
@@ -193,6 +236,8 @@ function emitGraphQLTypes(lines: string[], api: GenGraphQLApiInfo, ns: string, t
     } else {
       let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}>`;
       if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
+      if (tq && op.pagination)
+        line += `\n        & MagiaTanStackInfiniteQuery<${reqType}, ${resType}>`;
       lines.push(line);
     }
   }

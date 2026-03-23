@@ -1,5 +1,5 @@
 import type { OpenApiSpec, OpenApiOperation, OpenApiParameter, OpenApiPathItem } from "./parser";
-import type { RestManifestEntry, ParamLocation } from "../types";
+import type { RestManifestEntry, ParamLocation, PaginationMeta } from "../types";
 
 const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -69,6 +69,68 @@ function extractParams(
 }
 
 /**
+ * Detect if requestBody uses multipart/form-data.
+ */
+function isMultipart(operation: OpenApiOperation): boolean {
+  return !!operation.requestBody?.content?.["multipart/form-data"];
+}
+
+/**
+ * Detect if any success response uses text/event-stream (SSE).
+ */
+function isSSE(operation: OpenApiOperation): boolean {
+  for (const [code, response] of Object.entries(operation.responses ?? {})) {
+    if (code.startsWith("2") && response.content?.["text/event-stream"]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Detect pagination params from query parameters.
+ */
+function detectPagination(params: Record<string, ParamLocation>): PaginationMeta | undefined {
+  const queryParams = new Set(
+    Object.entries(params)
+      .filter(([, loc]) => loc === "query")
+      .map(([name]) => name.toLowerCase()),
+  );
+
+  const queryParamNames = Object.entries(params)
+    .filter(([, loc]) => loc === "query")
+    .map(([name]) => name);
+
+  // cursor-based: cursor or after param
+  for (const name of queryParamNames) {
+    const lower = name.toLowerCase();
+    if (lower === "cursor" || (lower === "after" && !queryParams.has("before"))) {
+      return { style: "cursor", pageParam: name };
+    }
+  }
+
+  // offset/limit
+  if (queryParams.has("offset") && queryParams.has("limit")) {
+    const offsetName = queryParamNames.find((n) => n.toLowerCase() === "offset")!;
+    const limitName = queryParamNames.find((n) => n.toLowerCase() === "limit")!;
+    return { style: "offset", pageParam: offsetName, sizeParam: limitName };
+  }
+
+  // page/pageSize
+  for (const name of queryParamNames) {
+    const lower = name.toLowerCase();
+    if (lower === "page") {
+      const sizeName = queryParamNames.find((n) =>
+        ["pagesize", "per_page", "perpage", "limit", "size"].includes(n.toLowerCase()),
+      );
+      return { style: "page", pageParam: name, sizeParam: sizeName };
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Extract all operations from an OpenAPI spec.
  */
 export function extractOperations(
@@ -86,6 +148,10 @@ export function extractOperations(
       if (!operation) continue;
 
       const operationName = nameFn(method.toUpperCase(), path, operation.operationId);
+      const params = extractParams(pathParams, operation);
+      const multipart = isMultipart(operation) || undefined;
+      const sse = isSSE(operation) || undefined;
+      const pagination = detectPagination(params);
 
       operations.push({
         operationName,
@@ -93,7 +159,10 @@ export function extractOperations(
           type: "rest",
           method: method.toUpperCase() as RestManifestEntry["method"],
           path,
-          params: extractParams(pathParams, operation),
+          params,
+          ...(multipart && { multipart }),
+          ...(sse && { sse }),
+          ...(pagination && { pagination }),
         },
       });
     }

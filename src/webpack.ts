@@ -1,6 +1,8 @@
 import type { Compiler } from "webpack";
+import { resolve } from "node:path";
 import { resolveConfig } from "./loader";
 import { generate } from "./codegen/index";
+import { classifySource } from "./schema";
 
 export interface MagiaApiOptions {
   /** Working directory (default: process.cwd()) */
@@ -12,6 +14,7 @@ export interface MagiaApiOptions {
 /**
  * Webpack plugin for magia-api.
  * Triggers codegen before compilation starts.
+ * In watch mode, adds local schema files to fileDependencies for auto-rebuild.
  */
 export class MagiaApiPlugin {
   private opts: MagiaApiOptions;
@@ -21,12 +24,16 @@ export class MagiaApiPlugin {
   }
 
   apply(compiler: Compiler) {
+    let magiaConfig: Awaited<ReturnType<typeof resolveConfig>>["config"] | null = null;
+
     compiler.hooks.beforeCompile.tapPromise("magia-api", async () => {
       const cwd = this.opts.cwd ?? process.cwd();
 
       try {
-        const { config } = await resolveConfig(cwd);
-        const result = await generate({ config, cwd, force: this.opts.force });
+        const resolved = await resolveConfig(cwd);
+        magiaConfig = resolved.config;
+
+        const result = await generate({ config: magiaConfig, cwd, force: this.opts.force });
 
         if (result.errors.length > 0) {
           for (const { apiName, error } of result.errors) {
@@ -42,6 +49,20 @@ export class MagiaApiPlugin {
         console.log(`[magia-api] ${parts.join(", ")}`);
       } catch (err) {
         console.error(`[magia-api] Generation failed: ${err instanceof Error ? err.message : err}`);
+      }
+    });
+
+    // Add local schema files to webpack's file dependencies for watch mode
+    compiler.hooks.afterCompile.tap("magia-api", (compilation) => {
+      if (!magiaConfig) return;
+      const cwd = this.opts.cwd ?? process.cwd();
+
+      for (const [, apiConfig] of Object.entries(magiaConfig.apis)) {
+        const kind = classifySource(apiConfig.schema);
+        if (kind === "local-file") {
+          const schemaPath = resolve(cwd, apiConfig.schema as string);
+          compilation.fileDependencies.add(schemaPath);
+        }
       }
     });
   }
