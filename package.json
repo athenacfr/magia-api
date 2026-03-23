@@ -55,6 +55,10 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
