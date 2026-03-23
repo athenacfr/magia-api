@@ -81,6 +81,9 @@
 - https://github.com/0no-co/gql.tada — Zero-codegen GraphQL type inference. Explore for v1.1 GraphQL mode as alternative to graphql-codegen.
 - https://github.com/graffle-js/graffle — Modern GraphQL client with typed document nodes, schema-driven types, and extensible architecture. Explore for GraphQL runtime client patterns.
 
+**REST (Hey API internals):**
+- https://github.com/hey-api/openapi-ts — Clone and explore project structure, plugin architecture, config system, and codegen pipeline. Understand how they handle edge cases, type generation, and the `createClient` programmatic API we depend on.
+
 ## Blockers
 
 None currently.
