@@ -4,6 +4,18 @@ Zero-ceremony typed API client generation for Vite.
 
 Define your APIs once. Get fully typed `fetch()`, TanStack Query options, and cache keys — all from a single config file. No codegen scripts, no manual types, no boilerplate.
 
+## Why Magia?
+
+Every frontend team eventually writes the same glue: fetch wrappers, hand-maintained types, query-key factories, error normalization. Magia replaces all of that with a single config file.
+
+Point it at your OpenAPI or GraphQL schema. The bundler plugin generates types on start. The runtime client gives you typed fetch, TanStack Query integration, interceptors, and error handling — all through one API surface. REST and GraphQL work the same way.
+
+**What makes it different from using the underlying tools directly:**
+
+- **One config, full stack** — You don't wire together a codegen tool, a fetch library, a query-key factory, and an error wrapper. Magia is the entire layer between your API and your components.
+- **You never import the internals** — The codegen and fetch layers are implementation details. Your code depends on `magia-api`, not on the tools underneath.
+- **It stays out of your way** — No runtime overhead, no custom protocols, no vendor lock-in. It generates standard TypeScript and uses standard fetch. Eject anytime by keeping the generated file.
+
 ```typescript
 // REST — fully typed from OpenAPI schema
 const pet = await magia.petstore.getPetById.fetch({ petId: 1 });
@@ -146,6 +158,7 @@ magia-api init                  # Scaffold config file
 
 ### Getting Started
 
+- [Design Principles](docs/design-principles.md) — Why Magia works the way it does
 - [Configuration](docs/configuration.md) — `defineConfig()`, schema sources, plugins, custom operation names
 - [Runtime Client](docs/runtime-client.md) — `createMagia()`, fetch, safeFetch, interceptors, context, headers
 - [Error Handling](docs/error-handling.md) — `MagiaError`, `.safeFetch()`, `.isError()`, `transformError`, abort vs timeout
