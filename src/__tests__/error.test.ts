@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MagiaError } from "../error";
 import { createMagia } from "../proxy";
-import type { Manifest, MagiaConfig } from "../types";
+import type { Manifest } from "../types";
 
 // ---------------------------------------------------------------------------
 // MagiaError class tests
@@ -166,7 +166,7 @@ const manifest: Manifest = {
   },
 };
 
-const config: MagiaConfig = {
+const config = {
   apis: {
     petstore: { baseUrl: "https://petstore.example.com" },
   },
@@ -188,7 +188,7 @@ describe("Proxy error handling", () => {
 
   it("throws MagiaError on 404", async () => {
     globalThis.fetch = mockFetch({ message: "Pet not found" }, 404);
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 999 });
@@ -208,7 +208,7 @@ describe("Proxy error handling", () => {
 
   it("throws MagiaError on 500 with error data", async () => {
     globalThis.fetch = mockFetch({ error: "internal" }, 500);
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 1 });
@@ -223,7 +223,7 @@ describe("Proxy error handling", () => {
 
   it("throws MagiaError with NETWORK_ERROR on fetch failure", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 1 });
@@ -242,7 +242,7 @@ describe("Proxy error handling", () => {
   it("throws MagiaError with TIMEOUT on abort", async () => {
     const abortErr = new DOMException("The operation was aborted", "AbortError");
     globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 1 });
@@ -258,7 +258,7 @@ describe("Proxy error handling", () => {
   it("calls onError with MagiaError", async () => {
     globalThis.fetch = mockFetch({}, 403);
     const onError = vi.fn();
-    const magia = createMagia({ ...config, onError }, manifest) as any;
+    const magia = createMagia({ ...config, manifest, onError }) as any;
 
     await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow();
     expect(onError).toHaveBeenCalledOnce();
@@ -270,7 +270,7 @@ describe("Proxy error handling", () => {
   it("calls onError on network error", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("offline"));
     const onError = vi.fn();
-    const magia = createMagia({ ...config, onError }, manifest) as any;
+    const magia = createMagia({ ...config, manifest, onError }) as any;
 
     await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow();
     expect(onError).toHaveBeenCalledOnce();
@@ -284,7 +284,7 @@ describe("Proxy error handling", () => {
       headers: new Headers(),
       json: () => Promise.reject(new SyntaxError("Unexpected token")),
     });
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 1 });
@@ -309,7 +309,7 @@ describe("isError type guard", () => {
 
   it("returns true for matching MagiaError", async () => {
     globalThis.fetch = mockFetch({ message: "not found" }, 404);
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 999 });
@@ -321,7 +321,7 @@ describe("isError type guard", () => {
   });
 
   it("returns false for non-MagiaError", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     expect(magia.petstore.getPetById.isError(new Error("nope"), 404)).toBe(false);
     expect(magia.petstore.getPetById.isError(null, 404)).toBe(false);
     expect(magia.petstore.getPetById.isError("string", 404)).toBe(false);
@@ -329,7 +329,7 @@ describe("isError type guard", () => {
 
   it("returns false for wrong API/operation", async () => {
     globalThis.fetch = mockFetch({}, 404);
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.petstore.getPetById.fetch({ petId: 999 });
@@ -341,7 +341,7 @@ describe("isError type guard", () => {
   });
 
   it("works with string codes", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     const err = new MagiaError("timeout", {
       status: 0,
       code: "TIMEOUT",

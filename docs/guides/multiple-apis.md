@@ -36,21 +36,19 @@ export default defineConfig({
 import { createMagia } from "magia-api";
 import { manifest } from "./magia.gen";
 
-export const magia = createMagia(
-  {
-    apis: {
-      petstore: { baseUrl: import.meta.env.VITE_PETSTORE_URL },
-      payments: { baseUrl: import.meta.env.VITE_PAYMENTS_URL },
-      github: {
-        baseUrl: "https://api.github.com/graphql",
-        fetchOptions: {
-          headers: () => ({ Authorization: `Bearer ${getToken()}` }),
-        },
+export const magia = createMagia({
+  manifest,
+  apis: {
+    petstore: { baseUrl: import.meta.env.VITE_PETSTORE_URL },
+    payments: { baseUrl: import.meta.env.VITE_PAYMENTS_URL },
+    github: {
+      baseUrl: "https://api.github.com/graphql",
+      fetchOptions: {
+        headers: () => ({ Authorization: `Bearer ${getToken()}` }),
       },
     },
   },
-  manifest,
-);
+});
 ```
 
 ## Usage

@@ -185,8 +185,11 @@ export interface MagiaPluginOptions {
 // createMagia config
 // ---------------------------------------------------------------------------
 
-export interface MagiaConfig {
-  apis: Record<string, MagiaApiConfig>;
+export interface MagiaConfig<TManifest extends Manifest = Manifest> {
+  /** Generated manifest from magia.gen.ts */
+  manifest: TManifest;
+  /** Per-API runtime config — keys must match manifest API names */
+  apis: { [K in keyof TManifest]: MagiaApiConfig };
   plugins?: MagiaPluginOptions;
   onError?: (error: MagiaError) => void;
 }

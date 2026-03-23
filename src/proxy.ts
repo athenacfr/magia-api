@@ -4,6 +4,7 @@ import type {
   RestManifestEntry,
   GraphQLManifestEntry,
   MagiaConfig,
+  MagiaApiConfig,
   MagiaFetchOptions,
 } from "./types";
 import { MagiaError } from "./error";
@@ -104,9 +105,7 @@ function extractHeaders(
 // Resolve headers (static or async function)
 // ---------------------------------------------------------------------------
 
-async function resolveHeaders(
-  config: MagiaConfig["apis"][string],
-): Promise<Record<string, string>> {
+async function resolveHeaders(config: MagiaApiConfig): Promise<Record<string, string>> {
   const h = config.fetchOptions?.headers;
   if (!h) return {};
   if (typeof h === "function") return await h();
@@ -122,7 +121,7 @@ async function dispatchRest(
   apiName: string,
   operationName: string,
   entry: RestManifestEntry,
-  apiConfig: MagiaConfig["apis"][string],
+  apiConfig: MagiaApiConfig,
   input: Record<string, unknown>,
   opts: MagiaFetchOptions,
 ): Promise<unknown> {
@@ -199,7 +198,7 @@ async function dispatchGraphQL(
   apiName: string,
   operationName: string,
   entry: GraphQLManifestEntry,
-  apiConfig: MagiaConfig["apis"][string],
+  apiConfig: MagiaApiConfig,
   input: Record<string, unknown>,
   opts: MagiaFetchOptions,
 ): Promise<unknown> {
@@ -294,11 +293,10 @@ async function dispatch(
   config: MagiaConfig,
   apiName: string,
   operationName: string,
-  manifest: Manifest,
   input: Record<string, unknown> = {},
   opts: MagiaFetchOptions = {},
 ): Promise<unknown> {
-  const apiManifest = manifest[apiName];
+  const apiManifest = config.manifest[apiName];
   if (!apiManifest) throw new Error(`Unknown API: ${apiName}`);
 
   const entry = apiManifest.operations[operationName];
@@ -318,7 +316,7 @@ async function dispatch(
 // Recursive Proxy
 // ---------------------------------------------------------------------------
 
-function createProxy(config: MagiaConfig, manifest: Manifest, path: string[]): unknown {
+function createProxy(config: MagiaConfig, path: string[]): unknown {
   return new Proxy(() => {}, {
     get(_target, prop: string) {
       if (prop === "then") return undefined; // not a thenable
@@ -326,7 +324,7 @@ function createProxy(config: MagiaConfig, manifest: Manifest, path: string[]): u
       // .fetch() on operation level (path = [apiName, operationName])
       if (prop === "fetch" && path.length === 2) {
         return (input?: Record<string, unknown>, opts?: MagiaFetchOptions) =>
-          dispatch(config, path[0], path[1], manifest, input, opts);
+          dispatch(config, path[0], path[1], input, opts);
       }
 
       // .isError() on operation level — type guard for MagiaError with specific status
@@ -346,15 +344,15 @@ function createProxy(config: MagiaConfig, manifest: Manifest, path: string[]): u
       // Plugin: tanstackQuery — check manifest for plugin activation
       if (path.length >= 1) {
         const apiName = path[0];
-        const apiManifest = manifest[apiName];
+        const apiManifest = config.manifest[apiName];
         if (apiManifest?.plugins.some((p) => p.name === "tanstackQuery")) {
-          const result = resolveTanStackQueryProp(path, prop, config, manifest);
+          const result = resolveTanStackQueryProp(path, prop, config);
           if (result !== undefined) return result;
         }
       }
 
       // Recurse deeper
-      return createProxy(config, manifest, [...path, prop]);
+      return createProxy(config, [...path, prop]);
     },
 
     apply() {
@@ -367,8 +365,10 @@ function createProxy(config: MagiaConfig, manifest: Manifest, path: string[]): u
 // Public API
 // ---------------------------------------------------------------------------
 
-export function createMagia(config: MagiaConfig, manifest: Manifest): MagiaClient {
-  return createProxy(config, manifest, []) as MagiaClient;
+export function createMagia<TManifest extends Manifest>(
+  config: MagiaConfig<TManifest>,
+): MagiaClient {
+  return createProxy(config, []) as MagiaClient;
 }
 
 // Re-export for internal use by plugins

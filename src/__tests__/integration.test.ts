@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMagia } from "../proxy";
 import { MagiaError } from "../error";
 import { tanstackQuery } from "../plugins/tanstack-query";
-import type { Manifest, MagiaConfig } from "../types";
+import type { Manifest } from "../types";
 
 const manifest: Manifest = {
   petstore: {
@@ -30,7 +30,7 @@ const manifest: Manifest = {
   },
 };
 
-const config: MagiaConfig = {
+const config = {
   apis: {
     petstore: {
       baseUrl: "https://petstore.example.com",
@@ -59,7 +59,7 @@ describe("Integration: full DX flow", () => {
     const fetch = mockFetch({ id: 1, name: "Rex", status: "available" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     const result = await magia.petstore.getPetById.fetch({ petId: 1 });
 
@@ -75,7 +75,7 @@ describe("Integration: full DX flow", () => {
     const fetch = mockFetch({ id: 1, name: "Rex" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     const opts = magia.petstore.getPetById.queryOptions({ petId: 1 });
 
@@ -91,7 +91,7 @@ describe("Integration: full DX flow", () => {
   });
 
   it("queryKey returns hierarchical key", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     expect(magia.petstore.getPetById.queryKey({ petId: 1 })).toEqual([
       "magia",
@@ -108,7 +108,7 @@ describe("Integration: full DX flow", () => {
     const fetch = mockFetch({ id: 2, name: "Buddy" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     const opts = magia.petstore.createPet.mutationOptions();
 
@@ -126,13 +126,13 @@ describe("Integration: full DX flow", () => {
   });
 
   it("mutationKey returns correct tuple", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     expect(magia.petstore.createPet.mutationKey()).toEqual(["magia", "petstore", "createPet"]);
   });
 
   it("pathKey on API namespace returns correct tuple", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     expect(magia.petstore.pathKey()).toEqual(["magia", "petstore"]);
   });
 
@@ -140,7 +140,7 @@ describe("Integration: full DX flow", () => {
     const fetch = mockFetch([{ id: 1, name: "Rex" }]);
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     const result = await magia.petstore.listPets.fetch({ status: "available" });
     expect(result).toEqual([{ id: 1, name: "Rex" }]);
@@ -154,7 +154,7 @@ describe("Integration: full DX flow", () => {
     globalThis.fetch = fetch;
     const onError = vi.fn();
 
-    const magia = createMagia({ ...config, onError }, manifest) as any;
+    const magia = createMagia({ ...config, manifest, onError }) as any;
 
     await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow(MagiaError);
 

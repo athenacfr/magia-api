@@ -1,4 +1,4 @@
-import type { Manifest, MagiaConfig } from "../types";
+import type { MagiaConfig } from "../types";
 import { dispatch } from "../proxy";
 
 /**
@@ -18,7 +18,6 @@ export function resolveTanStackQueryProp(
   path: string[],
   prop: string,
   config: MagiaConfig,
-  manifest: Manifest,
 ): unknown | undefined {
   if (path.length !== 2) return undefined;
 
@@ -31,7 +30,7 @@ export function resolveTanStackQueryProp(
           ? (["magia", apiName, operationName, input] as const)
           : (["magia", apiName, operationName] as const),
       queryFn: (ctx: { signal: AbortSignal }) =>
-        dispatch(config, apiName, operationName, manifest, input, {
+        dispatch(config, apiName, operationName, input, {
           signal: ctx.signal,
         }),
     });
@@ -50,7 +49,7 @@ export function resolveTanStackQueryProp(
       onError?: (error: Error, variables: unknown) => void;
     }) => ({
       mutationFn: (input: Record<string, unknown>) =>
-        dispatch(config, apiName, operationName, manifest, input),
+        dispatch(config, apiName, operationName, input),
       mutationKey: ["magia", apiName, operationName] as const,
       ...opts,
     });

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMagia } from "../proxy";
 import { MagiaError } from "../error";
-import type { Manifest, MagiaConfig } from "../types";
+import type { Manifest } from "../types";
 
 const manifest: Manifest = {
   petstore: {
@@ -35,7 +35,7 @@ const manifest: Manifest = {
   },
 };
 
-const config: MagiaConfig = {
+const config = {
   apis: {
     petstore: { baseUrl: "https://petstore.example.com" },
   },
@@ -59,7 +59,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({ id: 1, name: "Rex" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.getPetById.fetch({ petId: 1 });
 
     expect(fetch).toHaveBeenCalledOnce();
@@ -72,7 +72,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch([]);
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.listPets.fetch({ status: "available" });
 
     const [url] = fetch.mock.calls[0];
@@ -83,7 +83,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({ id: 2, name: "Buddy" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.createPet.fetch({ name: "Buddy", status: "available" });
 
     const [url, init] = fetch.mock.calls[0];
@@ -97,7 +97,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({});
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.deletePet.fetch({ petId: 42 });
 
     const [url, init] = fetch.mock.calls[0];
@@ -110,7 +110,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({ id: 1, name: "Rex" });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     const result = await magia.petstore.getPetById.fetch({ petId: 1 });
 
     expect(result).toEqual({ id: 1, name: "Rex" });
@@ -120,7 +120,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({ id: 1 }, 200);
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     const result = await magia.petstore.getPetById.fetch({ petId: 1 }, { raw: true });
 
     expect(result).toHaveProperty("data", { id: 1 });
@@ -129,12 +129,12 @@ describe("createMagia Proxy", () => {
   });
 
   it("throws on unknown API", async () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await expect(magia.unknown.op.fetch({})).rejects.toThrow("Unknown API: unknown");
   });
 
   it("throws on unknown operation", async () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await expect(magia.petstore.noSuchOp.fetch({})).rejects.toThrow(
       "Unknown operation: petstore.noSuchOp",
     );
@@ -145,7 +145,7 @@ describe("createMagia Proxy", () => {
     globalThis.fetch = fetch;
     const onError = vi.fn();
 
-    const magia = createMagia({ ...config, onError }, manifest) as any;
+    const magia = createMagia({ ...config, manifest, onError }) as any;
     await expect(magia.petstore.getPetById.fetch({ petId: 999 })).rejects.toThrow(MagiaError);
     expect(onError).toHaveBeenCalledOnce();
     expect(onError.mock.calls[0][0]).toBeInstanceOf(MagiaError);
@@ -155,7 +155,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch([]);
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.listPets.fetch({ status: "available" }, { query: { limit: 10 } });
 
     const [url] = fetch.mock.calls[0];
@@ -167,7 +167,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({});
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.getPetById.fetch({ petId: 1 }, { headers: { "X-Custom": "value" } });
 
     const [, init] = fetch.mock.calls[0];
@@ -178,7 +178,8 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch({});
     globalThis.fetch = fetch;
 
-    const asyncConfig: MagiaConfig = {
+    const asyncConfig = {
+      manifest,
       apis: {
         petstore: {
           baseUrl: "https://petstore.example.com",
@@ -189,7 +190,7 @@ describe("createMagia Proxy", () => {
       },
     };
 
-    const magia = createMagia(asyncConfig, manifest) as any;
+    const magia = createMagia(asyncConfig) as any;
     await magia.petstore.getPetById.fetch({ petId: 1 });
 
     const [, init] = fetch.mock.calls[0];
@@ -197,7 +198,7 @@ describe("createMagia Proxy", () => {
   });
 
   it("pathKey returns correct tuple on API namespace", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     expect(magia.petstore.pathKey()).toEqual(["magia", "petstore"]);
   });
 
@@ -205,7 +206,7 @@ describe("createMagia Proxy", () => {
     const fetch = mockFetch([]);
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await magia.petstore.listPets.fetch();
 
     expect(fetch).toHaveBeenCalledOnce();
@@ -231,7 +232,7 @@ describe("createMagia Proxy", () => {
       },
     };
 
-    const magia = createMagia(config, manifestWithHeaders) as any;
+    const magia = createMagia({ ...config, manifest: manifestWithHeaders }) as any;
     await magia.petstore.listPets.fetch({ "X-Api-Key": "my-key", status: "available" });
 
     const [url, init] = fetch.mock.calls[0];
@@ -241,7 +242,7 @@ describe("createMagia Proxy", () => {
   });
 
   it("does NOT expose TQ methods when plugin not in manifest", () => {
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     // manifest has plugins: [] — no TQ
     // .queryOptions recurses into another proxy level instead of returning a TQ function
     // Calling it as a function should throw (it's a proxy, not the TQ queryOptions)

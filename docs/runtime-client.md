@@ -1,6 +1,6 @@
 # Runtime Client
 
-`createMagia()` creates a typed proxy client from your config and generated manifest.
+`createMagia()` creates a typed proxy client from your config.
 
 ## Setup
 
@@ -9,26 +9,25 @@
 import { createMagia } from "magia-api";
 import { manifest } from "./magia.gen";
 
-export const magia = createMagia(
-  {
-    apis: {
-      petstore: {
-        baseUrl: import.meta.env.VITE_PETSTORE_URL,
-        fetchOptions: {
-          headers: { "X-Api-Key": import.meta.env.VITE_API_KEY },
-        },
+export const magia = createMagia({
+  manifest,
+  apis: {
+    petstore: {
+      baseUrl: import.meta.env.VITE_PETSTORE_URL,
+      fetchOptions: {
+        headers: { "X-Api-Key": import.meta.env.VITE_API_KEY },
       },
     },
   },
-  manifest,
-);
+});
 ```
 
 ## Config
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `apis` | `Record<string, MagiaApiConfig>` | Per-API runtime config |
+| `manifest` | `Manifest` | Generated manifest from `magia.gen.ts` |
+| `apis` | `{ [K in keyof Manifest]: MagiaApiConfig }` | Per-API runtime config — keys must match manifest |
 | `onError` | `(error: MagiaError) => void` | Global error handler |
 
 ### Per-API Config
@@ -81,21 +80,19 @@ Priority: path > query > body. Use `{ query, headers }` in options for explicit 
 ## Dynamic Headers
 
 ```typescript
-const magia = createMagia(
-  {
-    apis: {
-      protected: {
-        baseUrl: "/api",
-        fetchOptions: {
-          headers: () => ({
-            Authorization: `Bearer ${getToken()}`,
-          }),
-        },
+const magia = createMagia({
+  manifest,
+  apis: {
+    protected: {
+      baseUrl: "/api",
+      fetchOptions: {
+        headers: () => ({
+          Authorization: `Bearer ${getToken()}`,
+        }),
       },
     },
   },
-  manifest,
-);
+});
 ```
 
 Headers can be:
@@ -106,16 +103,14 @@ Headers can be:
 ## Global Error Handler
 
 ```typescript
-const magia = createMagia(
-  {
-    apis: { /* ... */ },
-    onError: (error) => {
-      // Called for every request error
-      Sentry.captureException(error);
-    },
-  },
+const magia = createMagia({
   manifest,
-);
+  apis: { /* ... */ },
+  onError: (error) => {
+    // Called for every request error
+    Sentry.captureException(error);
+  },
+});
 ```
 
 See [Error Handling](error-handling.md) for typed error details.

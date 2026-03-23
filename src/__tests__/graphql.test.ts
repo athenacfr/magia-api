@@ -7,7 +7,7 @@ import { extractGraphQLOperations } from "../codegen/graphql-codegen";
 import { generate } from "../codegen/index";
 import { createMagia } from "../proxy";
 import { MagiaError } from "../error";
-import type { Manifest, MagiaConfig } from "../types";
+import type { Manifest } from "../types";
 
 const SCHEMA_PATH = join(__dirname, "fixtures", "graphql", "schema.graphql");
 const OPS_PATH = join(__dirname, "fixtures", "graphql", "operations.graphql");
@@ -176,7 +176,7 @@ describe("GraphQL proxy dispatch", () => {
     },
   };
 
-  const config: MagiaConfig = {
+  const config = {
     apis: {
       cms: { baseUrl: "https://api.example.com/graphql" },
     },
@@ -199,7 +199,7 @@ describe("GraphQL proxy dispatch", () => {
     const fetch = mockGqlFetch({ user: { id: "1", name: "Alice" } });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     const result = await magia.cms.GetUser.fetch({ id: "1" });
 
     expect(result).toEqual({ user: { id: "1", name: "Alice" } });
@@ -218,7 +218,7 @@ describe("GraphQL proxy dispatch", () => {
     const fetch = mockGqlFetch({ createUser: { id: "2" } });
     globalThis.fetch = fetch;
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     const result = await magia.cms.CreateUser.fetch({
       input: { name: "Bob", email: "bob@example.com" },
     });
@@ -247,7 +247,7 @@ describe("GraphQL proxy dispatch", () => {
       },
     };
 
-    const magia = createMagia(config, manifest2) as any;
+    const magia = createMagia({ ...config, manifest: manifest2 }) as any;
     await magia.cms.ListUsers.fetch();
 
     const body = JSON.parse(fetch.mock.calls[0][1].body);
@@ -271,7 +271,7 @@ describe("GraphQL proxy dispatch", () => {
         }),
     });
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.cms.GetUser.fetch({ id: "999" });
@@ -296,14 +296,14 @@ describe("GraphQL proxy dispatch", () => {
       json: () => Promise.resolve({ error: "internal" }),
     });
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
     await expect(magia.cms.GetUser.fetch({ id: "1" })).rejects.toThrow(MagiaError);
   });
 
   it("throws MagiaError on network error", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
 
-    const magia = createMagia(config, manifest) as any;
+    const magia = createMagia({ ...config, manifest }) as any;
 
     try {
       await magia.cms.GetUser.fetch({ id: "1" });

@@ -40,19 +40,17 @@ export default defineConfig({
 import { createMagia } from "magia-api";
 import { manifest } from "../magia.gen";
 
-export const magia = createMagia(
-  {
-    apis: {
-      petstore: {
-        baseUrl: "https://petstore3.swagger.io/api/v3",
-        fetchOptions: {
-          headers: { "api_key": "special-key" },
-        },
+export const magia = createMagia({
+  manifest,
+  apis: {
+    petstore: {
+      baseUrl: "https://petstore3.swagger.io/api/v3",
+      fetchOptions: {
+        headers: { "api_key": "special-key" },
       },
     },
   },
-  manifest,
-);
+});
 ```
 
 ## 4. Using in Components

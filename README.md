@@ -25,14 +25,12 @@ export default defineConfig({
 import { createMagia } from "magia-api";
 import { manifest } from "./magia.gen";
 
-export const magia = createMagia(
-  {
-    apis: {
-      petstore: { baseUrl: "https://petstore3.swagger.io/api/v3" },
-    },
-  },
+export const magia = createMagia({
   manifest,
-);
+  apis: {
+    petstore: { baseUrl: "https://petstore3.swagger.io/api/v3" },
+  },
+});
 ```
 
 ```typescript
@@ -95,16 +93,14 @@ export default defineConfig({
 import { createMagia } from "magia-api";
 import { manifest } from "./magia.gen";
 
-export const magia = createMagia(
-  {
-    apis: {
-      petstore: {
-        baseUrl: import.meta.env.VITE_PETSTORE_URL,
-      },
+export const magia = createMagia({
+  manifest,
+  apis: {
+    petstore: {
+      baseUrl: import.meta.env.VITE_PETSTORE_URL,
     },
   },
-  manifest,
-);
+});
 ```
 
 ### 4. Use it

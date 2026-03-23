@@ -60,18 +60,16 @@ try {
 Handle all errors in one place:
 
 ```typescript
-const magia = createMagia(
-  {
-    apis: { /* ... */ },
-    onError: (error) => {
-      Sentry.captureException(error);
-      if (error.isAuthError()) {
-        authService.signOut();
-      }
-    },
-  },
+const magia = createMagia({
   manifest,
-);
+  apis: { /* ... */ },
+  onError: (error) => {
+    Sentry.captureException(error);
+    if (error.isAuthError()) {
+      authService.signOut();
+    }
+  },
+});
 ```
 
 The `onError` handler is called before the error is thrown, so the caller can still catch it.
