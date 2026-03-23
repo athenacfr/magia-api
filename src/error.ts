@@ -30,6 +30,10 @@ export class MagiaError extends Error {
     return this.code === "NETWORK_ERROR";
   }
 
+  isAborted(): boolean {
+    return this.code === "ABORTED";
+  }
+
   isTimeout(): boolean {
     return this.code === "TIMEOUT";
   }

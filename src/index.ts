@@ -20,6 +20,7 @@ export type {
   MagiaPlugin,
   MagiaFetchOptions,
   MagiaRawResponse,
+  MagiaSafeResult,
   MagiaSubscribeOptions,
   MagiaSSEOperation,
   // Operation types (used in module augmentation)

@@ -239,7 +239,26 @@ describe("Proxy error handling", () => {
     }
   });
 
-  it("throws MagiaError with TIMEOUT on abort", async () => {
+  it("throws MagiaError with ABORTED when user signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(); // user-initiated abort
+    const abortErr = new DOMException("The operation was aborted", "AbortError");
+    globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
+    const magia = createMagia({ ...config, manifest }) as any;
+
+    try {
+      await magia.petstore.getPetById.fetch({ petId: 1 }, { signal: controller.signal });
+      expect.fail("should have thrown");
+    } catch (err) {
+      const e = err as MagiaError;
+      expect(e).toBeInstanceOf(MagiaError);
+      expect(e.code).toBe("ABORTED");
+      expect(e.isAborted()).toBe(true);
+      expect(e.isTimeout()).toBe(false);
+    }
+  });
+
+  it("throws MagiaError with TIMEOUT when abort has no user signal", async () => {
     const abortErr = new DOMException("The operation was aborted", "AbortError");
     globalThis.fetch = vi.fn().mockRejectedValue(abortErr);
     const magia = createMagia({ ...config, manifest }) as any;
@@ -252,6 +271,7 @@ describe("Proxy error handling", () => {
       expect(e).toBeInstanceOf(MagiaError);
       expect(e.code).toBe("TIMEOUT");
       expect(e.isTimeout()).toBe(true);
+      expect(e.isAborted()).toBe(false);
     }
   });
 
@@ -351,5 +371,129 @@ describe("isError type guard", () => {
     });
     expect(magia.petstore.getPetById.isError(err, "TIMEOUT")).toBe(true);
     expect(magia.petstore.getPetById.isError(err, "NETWORK_ERROR")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeFetch tests
+// ---------------------------------------------------------------------------
+
+describe("safeFetch", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns { data, error: undefined } on success", async () => {
+    globalThis.fetch = mockFetch({ id: 1, name: "Rex" });
+    const magia = createMagia({ ...config, manifest }) as any;
+
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+    expect(result.data).toEqual({ id: 1, name: "Rex" });
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns { data: undefined, error } on HTTP error", async () => {
+    globalThis.fetch = mockFetch({ message: "not found" }, 404);
+    const magia = createMagia({ ...config, manifest }) as any;
+
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 999 });
+    expect(result.data).toBeUndefined();
+    expect(result.error).toBeInstanceOf(MagiaError);
+    expect(result.error.status).toBe(404);
+    expect(result.error.isNotFound()).toBe(true);
+  });
+
+  it("returns { data: undefined, error } on network error", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const magia = createMagia({ ...config, manifest }) as any;
+
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+    expect(result.data).toBeUndefined();
+    expect(result.error).toBeInstanceOf(MagiaError);
+    expect(result.error.isNetworkError()).toBe(true);
+  });
+
+  it("still calls onError callback", async () => {
+    globalThis.fetch = mockFetch({}, 500);
+    const onError = vi.fn();
+    const magia = createMagia({ ...config, manifest, onError }) as any;
+
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+    expect(result.error).toBeInstanceOf(MagiaError);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transformError tests
+// ---------------------------------------------------------------------------
+
+describe("transformError", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("transforms error before throwing", async () => {
+    globalThis.fetch = mockFetch({}, 404);
+    const transformError = vi.fn((err: MagiaError) => {
+      return new MagiaError(`Custom: ${err.message}`, {
+        status: err.status,
+        code: "CUSTOM_NOT_FOUND",
+        api: err.api,
+        operation: err.operation,
+        data: err.data,
+        response: err.response,
+      });
+    });
+
+    const magia = createMagia({ ...config, manifest, transformError }) as any;
+
+    try {
+      await magia.petstore.getPetById.fetch({ petId: 999 });
+      expect.fail("should have thrown");
+    } catch (err) {
+      const e = err as MagiaError;
+      expect(e.code).toBe("CUSTOM_NOT_FOUND");
+      expect(e.message).toContain("Custom:");
+    }
+
+    expect(transformError).toHaveBeenCalledOnce();
+  });
+
+  it("transformed error is passed to onError", async () => {
+    globalThis.fetch = mockFetch({}, 500);
+    const onError = vi.fn();
+    const transformError = (err: MagiaError) =>
+      new MagiaError("transformed", {
+        status: err.status,
+        code: "TRANSFORMED",
+        api: err.api,
+        operation: err.operation,
+        data: err.data,
+      });
+
+    const magia = createMagia({ ...config, manifest, transformError, onError }) as any;
+    await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow();
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0].code).toBe("TRANSFORMED");
+  });
+
+  it("transformError works with safeFetch", async () => {
+    globalThis.fetch = mockFetch({}, 403);
+    const transformError = (err: MagiaError) =>
+      new MagiaError("auth failed", {
+        status: err.status,
+        code: "AUTH_FAILED",
+        api: err.api,
+        operation: err.operation,
+        data: err.data,
+      });
+
+    const magia = createMagia({ ...config, manifest, transformError }) as any;
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+
+    expect(result.error).toBeInstanceOf(MagiaError);
+    expect(result.error.code).toBe("AUTH_FAILED");
   });
 });

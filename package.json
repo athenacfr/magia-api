@@ -140,8 +140,7 @@
     "@graphql-codegen/typescript": "^5.0.9",
     "@graphql-codegen/typescript-operations": "^5.0.9",
     "graphql": "^16.13.1",
-    "graphql-request": "^7.4.0",
-    "jiti": "^2.6.1",
+"jiti": "^2.6.1",
     "ofetch": "^1.5.1",
     "openapi-typescript": "^7.13.0",
     "yaml": "^2.8.3"

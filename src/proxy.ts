@@ -1,4 +1,5 @@
 import { ofetch, FetchError } from "ofetch";
+import type { $Fetch } from "ofetch";
 import type {
   Manifest,
   ManifestApi,
@@ -9,9 +10,38 @@ import type {
   MagiaApiConfig,
   MagiaFetchOptions,
   MagiaSubscribeOptions,
+  MagiaClient,
 } from "./types";
 import { MagiaError } from "./error";
 import { resolveTanStackQueryProp } from "./plugins/tanstack-query";
+
+// ---------------------------------------------------------------------------
+// Per-API ofetch instances
+// ---------------------------------------------------------------------------
+
+const apiClients = new WeakMap<MagiaConfig, Map<string, $Fetch>>();
+
+function getApiClient(config: MagiaConfig, apiConfig: MagiaApiConfig, apiName: string): $Fetch {
+  let cache = apiClients.get(config);
+  if (!cache) {
+    cache = new Map();
+    apiClients.set(config, cache);
+  }
+
+  let client = cache.get(apiName);
+  if (!client) {
+    client = ofetch.create({
+      retry: apiConfig.retry ?? 0,
+      timeout: apiConfig.timeout,
+      onRequest: apiConfig.onRequest,
+      onResponse: apiConfig.onResponse,
+      onResponseError: apiConfig.onResponseError,
+    });
+    cache.set(apiName, client);
+  }
+
+  return client;
+}
 
 // ---------------------------------------------------------------------------
 // URL construction (REST)
@@ -105,14 +135,66 @@ function extractHeaders(
 }
 
 // ---------------------------------------------------------------------------
-// Resolve headers (static or async function)
+// Resolve headers (static or async function) — sync fast path
 // ---------------------------------------------------------------------------
 
-async function resolveHeaders(config: MagiaApiConfig): Promise<Record<string, string>> {
+function resolveHeaders(
+  config: MagiaApiConfig,
+): Record<string, string> | Promise<Record<string, string>> {
   const h = config.fetchOptions?.headers;
   if (!h) return {};
-  if (typeof h === "function") return await h();
+  if (typeof h === "function") return h();
   return h;
+}
+
+// ---------------------------------------------------------------------------
+// Shared error wrapping — FetchError → MagiaError
+// ---------------------------------------------------------------------------
+
+interface ErrorContext {
+  label: string; // e.g. "GET /pet/{petId}" or "GraphQL GetUser"
+  api: string;
+  operation: string;
+  signal?: AbortSignal; // the user's signal, to distinguish user abort vs timeout
+}
+
+function wrapFetchError(err: FetchError, ctx: ErrorContext): MagiaError {
+  const isAbort = err.cause instanceof DOMException && err.cause.name === "AbortError";
+
+  let code: string;
+  if (isAbort) {
+    // User-initiated abort (their signal was aborted) vs ofetch internal timeout
+    code = ctx.signal?.aborted ? "ABORTED" : "TIMEOUT";
+  } else if (err.response) {
+    code = String(err.response.status);
+  } else {
+    code = "NETWORK_ERROR";
+  }
+
+  const message = isAbort
+    ? `${ctx.label} was aborted`
+    : err.response
+      ? `${ctx.label} failed with ${err.response.status}`
+      : `${ctx.label} network error: ${err.message}`;
+
+  return new MagiaError(message, {
+    status: err.response?.status ?? 0,
+    code,
+    api: ctx.api,
+    operation: ctx.operation,
+    data: err.data,
+    response: err.response as Response | undefined,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Apply transformError + onError, then throw
+// ---------------------------------------------------------------------------
+
+function throwMagiaError(config: MagiaConfig, error: MagiaError): never {
+  const transformed = config.transformError ? config.transformError(error) : error;
+  config.onError?.(transformed);
+  throw transformed;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +210,7 @@ async function dispatchRest(
   input: Record<string, unknown>,
   opts: MagiaFetchOptions,
 ): Promise<unknown> {
+  const client = getApiClient(config, apiConfig, apiName);
   const url = buildUrl(apiConfig.baseUrl, entry, input, opts.query);
   const body = extractBody(entry, input);
   const configHeaders = await resolveHeaders(apiConfig);
@@ -153,7 +236,7 @@ async function dispatchRest(
   }
 
   try {
-    const data = await ofetch.raw(url, {
+    const data = await client.raw(url, {
       method: entry.method,
       headers: {
         ...contentHeaders,
@@ -163,8 +246,6 @@ async function dispatchRest(
       },
       body: requestBody,
       signal: opts.signal,
-      // Let ofetch parse JSON automatically, but don't retry by default
-      retry: 0,
     });
 
     if (opts.raw) {
@@ -174,24 +255,15 @@ async function dispatchRest(
     return data._data;
   } catch (err) {
     if (err instanceof FetchError) {
-      const isAbort = err.cause instanceof DOMException && err.cause.name === "AbortError";
-      const error = new MagiaError(
-        isAbort
-          ? `${entry.method} ${entry.path} was aborted`
-          : err.response
-            ? `${entry.method} ${entry.path} failed with ${err.response.status}`
-            : `${entry.method} ${entry.path} network error: ${err.message}`,
-        {
-          status: err.response?.status ?? 0,
-          code: isAbort ? "TIMEOUT" : err.response ? String(err.response.status) : "NETWORK_ERROR",
+      throwMagiaError(
+        config,
+        wrapFetchError(err, {
+          label: `${entry.method} ${entry.path}`,
           api: apiName,
           operation: operationName,
-          data: err.data,
-          response: err.response as Response | undefined,
-        },
+          signal: opts.signal,
+        }),
       );
-      config.onError?.(error);
-      throw error;
     }
     throw err;
   }
@@ -210,12 +282,13 @@ async function dispatchGraphQL(
   input: Record<string, unknown>,
   opts: MagiaFetchOptions,
 ): Promise<unknown> {
+  const client = getApiClient(config, apiConfig, apiName);
   const url = apiConfig.baseUrl;
   const configHeaders = await resolveHeaders(apiConfig);
 
   let response;
   try {
-    response = await ofetch.raw(url, {
+    response = await client.raw(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -227,28 +300,18 @@ async function dispatchGraphQL(
         variables: Object.keys(input).length > 0 ? input : undefined,
       },
       signal: opts.signal,
-      retry: 0,
     });
   } catch (err) {
     if (err instanceof FetchError) {
-      const isAbort = err.cause instanceof DOMException && err.cause.name === "AbortError";
-      const error = new MagiaError(
-        isAbort
-          ? `GraphQL ${operationName} was aborted`
-          : err.response
-            ? `GraphQL ${operationName} failed with ${err.response.status}`
-            : `GraphQL ${operationName} network error: ${err.message}`,
-        {
-          status: err.response?.status ?? 0,
-          code: isAbort ? "TIMEOUT" : err.response ? String(err.response.status) : "NETWORK_ERROR",
+      throwMagiaError(
+        config,
+        wrapFetchError(err, {
+          label: `GraphQL ${operationName}`,
           api: apiName,
           operation: operationName,
-          data: err.data,
-          response: err.response as Response | undefined,
-        },
+          signal: opts.signal,
+        }),
       );
-      config.onError?.(error);
-      throw error;
     }
     throw err;
   }
@@ -270,8 +333,7 @@ async function dispatchGraphQL(
         response: response as unknown as Response,
       },
     );
-    config.onError?.(error);
-    throw error;
+    throwMagiaError(config, error);
   }
 
   if (opts.raw) {
@@ -324,6 +386,33 @@ async function* parseSSEStream(
 }
 
 // ---------------------------------------------------------------------------
+// SSE error wrapping (native fetch errors, not FetchError)
+// ---------------------------------------------------------------------------
+
+function wrapSSEFetchError(fetchErr: unknown, ctx: ErrorContext): MagiaError {
+  const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
+  let code: string;
+  if (isAbort) {
+    code = ctx.signal?.aborted ? "ABORTED" : "TIMEOUT";
+  } else {
+    code = "NETWORK_ERROR";
+  }
+
+  return new MagiaError(
+    isAbort
+      ? `${ctx.label} was aborted`
+      : `${ctx.label} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+    {
+      status: 0,
+      code,
+      api: ctx.api,
+      operation: ctx.operation,
+      data: undefined,
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // REST SSE dispatch
 // ---------------------------------------------------------------------------
 
@@ -356,19 +445,12 @@ function dispatchRestSSE(
         signal: opts.signal,
       });
     } catch (fetchErr) {
-      const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
-      throw new MagiaError(
-        isAbort
-          ? `SSE ${entry.path} was aborted`
-          : `SSE ${entry.path} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
-        {
-          status: 0,
-          code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
-          api: apiName,
-          operation: operationName,
-          data: undefined,
-        },
-      );
+      throw wrapSSEFetchError(fetchErr, {
+        label: `SSE ${entry.path}`,
+        api: apiName,
+        operation: operationName,
+        signal: opts.signal,
+      });
     }
 
     if (!response.ok) {
@@ -442,19 +524,12 @@ function dispatchGraphQLSubscription(
         signal: opts.signal,
       });
     } catch (fetchErr) {
-      const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
-      throw new MagiaError(
-        isAbort
-          ? `GraphQL subscription ${operationName} was aborted`
-          : `GraphQL subscription ${operationName} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
-        {
-          status: 0,
-          code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
-          api: apiName,
-          operation: operationName,
-          data: undefined,
-        },
-      );
+      throw wrapSSEFetchError(fetchErr, {
+        label: `GraphQL subscription ${operationName}`,
+        api: apiName,
+        operation: operationName,
+        signal: opts.signal,
+      });
     }
 
     if (!response.ok) {
@@ -634,6 +709,36 @@ async function dispatch(
 }
 
 // ---------------------------------------------------------------------------
+// Safe dispatch — returns { data, error } instead of throwing
+// ---------------------------------------------------------------------------
+
+async function safeFetchDispatch(
+  config: MagiaConfig,
+  apiName: string,
+  operationName: string,
+  input: Record<string, unknown> = {},
+  opts: MagiaFetchOptions = {},
+): Promise<{ data: unknown; error: undefined } | { data: undefined; error: MagiaError }> {
+  try {
+    const data = await dispatch(config, apiName, operationName, input, opts);
+    return { data, error: undefined };
+  } catch (err) {
+    if (err instanceof MagiaError) {
+      return { data: undefined, error: err };
+    }
+    // Unexpected errors still get wrapped
+    const wrapped = new MagiaError(err instanceof Error ? err.message : String(err), {
+      status: 0,
+      code: "UNKNOWN",
+      api: apiName,
+      operation: operationName,
+      data: undefined,
+    });
+    return { data: undefined, error: wrapped };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Recursive Proxy
 // ---------------------------------------------------------------------------
 
@@ -657,6 +762,12 @@ function createProxy(config: MagiaConfig, path: string[]): unknown {
       if (prop === "fetch" && path.length === 2) {
         return (input?: Record<string, unknown>, opts?: MagiaFetchOptions) =>
           dispatch(config, path[0], path[1], input, opts);
+      }
+
+      // .safeFetch() on operation level — returns { data, error } instead of throwing
+      if (prop === "safeFetch" && path.length === 2) {
+        return (input?: Record<string, unknown>, opts?: MagiaFetchOptions) =>
+          safeFetchDispatch(config, path[0], path[1], input, opts);
       }
 
       // .subscribe() on operation level (SSE / GraphQL subscriptions)
@@ -723,6 +834,3 @@ export function createMagia<TManifest extends Manifest | LazyManifest>(
 
 // Re-export for internal use by plugins
 export { buildUrl, extractBody, extractHeaders, resolveHeaders, dispatch };
-
-// Need the type in scope for the return type
-import type { MagiaClient } from "./types";

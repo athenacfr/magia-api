@@ -1,3 +1,5 @@
+import type { FetchOptions } from "ofetch";
+
 // ---------------------------------------------------------------------------
 // Manifest (internal — describes operations for the Proxy)
 // ---------------------------------------------------------------------------
@@ -86,9 +88,14 @@ export interface MagiaRawResponse<T> {
 
 import type { MagiaError } from "./error";
 
+export type MagiaSafeResult<T> =
+  | { data: T; error: undefined }
+  | { data: undefined; error: MagiaError };
+
 export interface MagiaOperation<TInput, TOutput, TErrors = {}> {
   fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>;
   fetch(input: TInput, opts: MagiaFetchOptions & { raw: true }): Promise<MagiaRawResponse<TOutput>>;
+  safeFetch(input: TInput, opts?: MagiaFetchOptions): Promise<MagiaSafeResult<TOutput>>;
   isError<TCode extends keyof TErrors>(
     error: unknown,
     code: TCode,
@@ -97,6 +104,7 @@ export interface MagiaOperation<TInput, TOutput, TErrors = {}> {
 
 export interface MagiaMutation<TInput, TOutput, TErrors = {}> {
   fetch(input: TInput, opts?: MagiaFetchOptions): Promise<TOutput>;
+  safeFetch(input: TInput, opts?: MagiaFetchOptions): Promise<MagiaSafeResult<TOutput>>;
   isError<TCode extends keyof TErrors>(
     error: unknown,
     code: TCode,
@@ -194,6 +202,16 @@ export interface MagiaClient {
 
 export interface MagiaApiConfig {
   baseUrl: string;
+  /** Number of retry attempts for failed requests (default: 0, false to disable) */
+  retry?: FetchOptions["retry"];
+  /** Request timeout in milliseconds */
+  timeout?: FetchOptions["timeout"];
+  /** Called before each request — use for auth injection, logging, etc. */
+  onRequest?: FetchOptions["onRequest"];
+  /** Called after each successful response — use for data transforms, logging */
+  onResponse?: FetchOptions["onResponse"];
+  /** Called on error responses (4xx/5xx) — fires before MagiaError wrapping */
+  onResponseError?: FetchOptions["onResponseError"];
   fetchOptions?: {
     headers?:
       | Record<string, string>
@@ -226,4 +244,6 @@ export interface MagiaConfig<TManifest extends Manifest | LazyManifest = Manifes
   apis: { [K in keyof TManifest]: MagiaApiConfig };
   plugins?: MagiaPluginOptions;
   onError?: (error: MagiaError) => void;
+  /** Transform errors before they're thrown. Return value replaces the original error. */
+  transformError?: (error: MagiaError) => MagiaError;
 }

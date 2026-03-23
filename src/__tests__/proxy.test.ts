@@ -390,4 +390,74 @@ describe("createMagia Proxy", () => {
     const pet = await magia.petstore.getPetById.fetch({ petId: 1 });
     expect(pet).toEqual({ id: 1, name: "Rex" });
   });
+
+  // ── Per-API ofetch config ──
+
+  it("passes onRequest interceptor to ofetch", async () => {
+    const fetch = mockFetch({ id: 1, name: "Rex" });
+    globalThis.fetch = fetch;
+    const onRequest = vi.fn();
+
+    const magia = createMagia({
+      manifest,
+      apis: {
+        petstore: {
+          baseUrl: "https://petstore.example.com",
+          onRequest,
+        },
+      },
+    }) as any;
+
+    await magia.petstore.getPetById.fetch({ petId: 1 });
+    expect(onRequest).toHaveBeenCalledOnce();
+  });
+
+  it("passes onResponse interceptor to ofetch", async () => {
+    const fetch = mockFetch({ id: 1, name: "Rex" });
+    globalThis.fetch = fetch;
+    const onResponse = vi.fn();
+
+    const magia = createMagia({
+      manifest,
+      apis: {
+        petstore: {
+          baseUrl: "https://petstore.example.com",
+          onResponse,
+        },
+      },
+    }) as any;
+
+    await magia.petstore.getPetById.fetch({ petId: 1 });
+    expect(onResponse).toHaveBeenCalledOnce();
+  });
+
+  it("passes onResponseError interceptor to ofetch on error", async () => {
+    const fetch = mockFetch({}, 500);
+    globalThis.fetch = fetch;
+    const onResponseError = vi.fn();
+
+    const magia = createMagia({
+      manifest,
+      apis: {
+        petstore: {
+          baseUrl: "https://petstore.example.com",
+          onResponseError,
+        },
+      },
+    }) as any;
+
+    await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow();
+    expect(onResponseError).toHaveBeenCalledOnce();
+  });
+
+  it("safeFetch is available on operations", async () => {
+    const fetch = mockFetch({ id: 1, name: "Rex" });
+    globalThis.fetch = fetch;
+
+    const magia = createMagia({ ...config, manifest }) as any;
+    const result = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+
+    expect(result.data).toEqual({ id: 1, name: "Rex" });
+    expect(result.error).toBeUndefined();
+  });
 });
