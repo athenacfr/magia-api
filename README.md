@@ -184,8 +184,7 @@ magia-api init                  # Scaffold config file
 
 ## Examples
 
-- [GraphQL](examples/graphql) — GitHub GraphQL API with TanStack Query
-- [Multi-API](examples/multi-api) — REST + GraphQL in a single project
+- [Showcase](examples/showcase) — REST (PokeAPI) + GraphQL (Rick and Morty) with TanStack Query, pagination, safeFetch, interceptors, and Tailwind UI
 
 ## License
 

@@ -3,14 +3,14 @@ import { defineConfig, tanstackQuery } from "magia-api";
 export default defineConfig({
   output: "src/magia.gen.ts",
   apis: {
-    petstore: {
+    pokeapi: {
       type: "rest",
-      schema: "https://petstore3.swagger.io/api/v3/openapi.json",
+      schema: "https://raw.githubusercontent.com/PokeAPI/pokeapi/master/openapi.yml",
       plugins: [tanstackQuery()],
     },
-    github: {
+    rickandmorty: {
       type: "graphql",
-      schema: "https://docs.github.com/public/fpt/schema.docs.graphql",
+      schema: "./schema.graphql",
       documents: "./src/graphql/**/*.graphql",
       plugins: [tanstackQuery()],
     },

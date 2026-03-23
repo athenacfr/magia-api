@@ -1,24 +1,24 @@
 {
-  "name": "magia-api-example",
-  "version": "0.0.1",
+  "name": "magia-showcase",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "generate": "node ../../dist/cli.js generate"
+    "build": "vite build"
   },
   "dependencies": {
-    "magia-api": "link:../../",
+    "magia-api": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@tanstack/react-query": "^5.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "typescript": "^5.7.0",
-    "vite": "^8.0.0"
+    "@types/react-dom": "^19.0.0"
   }
 }
