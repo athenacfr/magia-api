@@ -1,4 +1,4 @@
 node_modules/
 dist/
 *.tsbuildinfo
-magia.gen.ts
+*.gen.ts

@@ -1,6 +1,5 @@
 import { resolve, relative, dirname } from "node:path";
 import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 
 import type { DefineConfigInput, MagiaPlugin } from "../types";
 import { resolveSchema } from "../schema";
@@ -22,15 +21,8 @@ export interface GenerateResult {
   errors: Array<{ apiName: string; error: Error }>;
 }
 
-/**
- * Resolve where magia.gen.ts goes.
- * Respects config.output, otherwise defaults to src/magia.gen.ts if src/ exists.
- */
 function resolveGenFilePath(cwd: string, config: DefineConfigInput): string {
-  if (config.output) return resolve(cwd, config.output);
-  const srcDir = resolve(cwd, "src");
-  const dir = existsSync(srcDir) ? srcDir : cwd;
-  return resolve(dir, "magia.gen.ts");
+  return resolve(cwd, config.output);
 }
 
 /**

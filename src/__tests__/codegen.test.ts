@@ -212,6 +212,7 @@ describe("generate (full pipeline)", () => {
   it("generates magia.gen.ts from petstore spec", async () => {
     const result = await generate({
       config: {
+        output: "./src/magia.gen.ts",
         apis: {
           petstore: {
             type: "rest",
@@ -251,6 +252,7 @@ describe("generate (full pipeline)", () => {
   it("reports error for GraphQL API in v1", async () => {
     const result = await generate({
       config: {
+        output: "./src/magia.gen.ts",
         apis: {
           github: {
             type: "graphql" as any,

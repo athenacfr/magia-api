@@ -1,11 +1,12 @@
-import { defineConfig, tanstackQuery } from 'magia-api'
+import { defineConfig, tanstackQuery } from "magia-api";
 
 export default defineConfig({
+  output: "./src/magia.gen.ts",
   apis: {
     petstore: {
-      type: 'rest',
-      schema: 'https://petstore3.swagger.io/api/v3/openapi.json',
+      type: "rest",
+      schema: "https://petstore3.swagger.io/api/v3/openapi.json",
       plugins: [tanstackQuery()],
     },
   },
-})
+});
