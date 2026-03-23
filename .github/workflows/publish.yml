@@ -6,12 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  id-token: write
-
 jobs:
   check:
     name: Lint, Test & Build
@@ -47,6 +41,11 @@ jobs:
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +59,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -68,5 +68,6 @@ jobs:
       - name: Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
         run: npx semantic-release
