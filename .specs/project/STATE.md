@@ -74,6 +74,13 @@
 | TanStack Router | Single generated `.gen.ts` file in user's source. `declare module` augmentation. Vite plugin generation. User imports generated route tree. | 2026-03-22 |
 | inspira-app | Dual API. Two configs. Manual scripts. Custom wrapper hooks. SSE for AI streaming. | 2026-03-22 |
 
+## Research: Projects to Explore
+
+**GraphQL (gql.tada / zero-codegen approach):**
+- https://github.com/0no-co/graphql.web — Lightweight GraphQL spec implementation. Used by gql.tada for type-level parsing.
+- https://github.com/0no-co/gql.tada — Zero-codegen GraphQL type inference. Explore for v1.1 GraphQL mode as alternative to graphql-codegen.
+- https://github.com/graffle-js/graffle — Modern GraphQL client with typed document nodes, schema-driven types, and extensible architecture. Explore for GraphQL runtime client patterns.
+
 ## Blockers
 
 None currently.
