@@ -10,13 +10,14 @@ import type {
   MagiaApiConfig,
   MagiaFetchOptions,
   MagiaSubscribeOptions,
+  MagiaRequestContext,
   MagiaClient,
 } from "./types";
 import { MagiaError } from "./error";
 import { resolveTanStackQueryProp } from "./plugins/tanstack-query";
 
 // ---------------------------------------------------------------------------
-// Per-API ofetch instances
+// Per-API ofetch instances (transport only — retry/timeout)
 // ---------------------------------------------------------------------------
 
 const apiClients = new WeakMap<MagiaConfig, Map<string, $Fetch>>();
@@ -33,9 +34,6 @@ function getApiClient(config: MagiaConfig, apiConfig: MagiaApiConfig, apiName: s
     client = ofetch.create({
       retry: apiConfig.retry ?? 0,
       timeout: apiConfig.timeout,
-      onRequest: apiConfig.onRequest,
-      onResponse: apiConfig.onResponse,
-      onResponseError: apiConfig.onResponseError,
     });
     cache.set(apiName, client);
   }
@@ -235,18 +233,47 @@ async function dispatchRest(
     contentHeaders["Content-Type"] = "application/json";
   }
 
+  // Merge all headers — mutable via onRequest hook
+  const mergedHeaders: Record<string, string> = {
+    ...contentHeaders,
+    ...configHeaders,
+    ...inputHeaders,
+    ...opts.headers,
+  };
+
+  // Build magia request context for hooks
+  const reqCtx: MagiaRequestContext = {
+    api: apiName,
+    operation: operationName,
+    url,
+    method: entry.method,
+    headers: mergedHeaders,
+    body: requestBody,
+    context: opts.context ?? {},
+  };
+
+  // onRequest hook — user can mutate headers, body, etc.
+  if (apiConfig.onRequest) {
+    await apiConfig.onRequest(reqCtx);
+  }
+
   try {
     const data = await client.raw(url, {
       method: entry.method,
-      headers: {
-        ...contentHeaders,
-        ...configHeaders,
-        ...inputHeaders,
-        ...opts.headers,
-      },
-      body: requestBody,
+      headers: reqCtx.headers,
+      body: reqCtx.body as BodyInit | undefined,
       signal: opts.signal,
     });
+
+    // onResponse hook
+    if (apiConfig.onResponse) {
+      await apiConfig.onResponse({
+        ...reqCtx,
+        status: data.status,
+        data: data._data,
+        response: data as unknown as Response,
+      });
+    }
 
     if (opts.raw) {
       return { data: data._data, headers: data.headers, status: data.status };
@@ -255,6 +282,16 @@ async function dispatchRest(
     return data._data;
   } catch (err) {
     if (err instanceof FetchError) {
+      // onResponseError hook
+      if (apiConfig.onResponseError && err.response) {
+        await apiConfig.onResponseError({
+          ...reqCtx,
+          status: err.response.status,
+          data: err.data,
+          response: err.response as Response,
+        });
+      }
+
       throwMagiaError(
         config,
         wrapFetchError(err, {
@@ -286,23 +323,53 @@ async function dispatchGraphQL(
   const url = apiConfig.baseUrl;
   const configHeaders = await resolveHeaders(apiConfig);
 
+  const gqlBody = {
+    query: entry.document,
+    variables: Object.keys(input).length > 0 ? input : undefined,
+  };
+
+  const mergedHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...configHeaders,
+    ...opts.headers,
+  };
+
+  // Build magia request context for hooks
+  const reqCtx: MagiaRequestContext = {
+    api: apiName,
+    operation: operationName,
+    url,
+    method: "POST",
+    headers: mergedHeaders,
+    body: gqlBody,
+    context: opts.context ?? {},
+  };
+
+  // onRequest hook — user can mutate headers, body, etc.
+  if (apiConfig.onRequest) {
+    await apiConfig.onRequest(reqCtx);
+  }
+
   let response;
   try {
     response = await client.raw(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...configHeaders,
-        ...opts.headers,
-      },
-      body: {
-        query: entry.document,
-        variables: Object.keys(input).length > 0 ? input : undefined,
-      },
+      headers: reqCtx.headers,
+      body: reqCtx.body,
       signal: opts.signal,
     });
   } catch (err) {
     if (err instanceof FetchError) {
+      // onResponseError hook
+      if (apiConfig.onResponseError && err.response) {
+        await apiConfig.onResponseError({
+          ...reqCtx,
+          status: err.response.status,
+          data: err.data,
+          response: err.response as Response,
+        });
+      }
+
       throwMagiaError(
         config,
         wrapFetchError(err, {
@@ -317,6 +384,16 @@ async function dispatchGraphQL(
   }
 
   const json = response._data as { data?: unknown; errors?: unknown[] };
+
+  // onResponse hook
+  if (apiConfig.onResponse) {
+    await apiConfig.onResponse({
+      ...reqCtx,
+      status: response.status,
+      data: json?.data,
+      response: response as unknown as Response,
+    });
+  }
 
   // GraphQL errors in response body
   if (json?.errors && Array.isArray(json.errors) && json.errors.length > 0) {

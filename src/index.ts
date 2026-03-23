@@ -21,6 +21,9 @@ export type {
   MagiaFetchOptions,
   MagiaRawResponse,
   MagiaSafeResult,
+  MagiaContext,
+  MagiaRequestContext,
+  MagiaResponseContext,
   MagiaSubscribeOptions,
   MagiaSSEOperation,
   // Operation types (used in module augmentation)

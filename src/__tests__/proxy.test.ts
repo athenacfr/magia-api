@@ -393,7 +393,7 @@ describe("createMagia Proxy", () => {
 
   // ── Per-API ofetch config ──
 
-  it("passes onRequest interceptor to ofetch", async () => {
+  it("onRequest receives MagiaRequestContext with api, operation, context", async () => {
     const fetch = mockFetch({ id: 1, name: "Rex" });
     globalThis.fetch = fetch;
     const onRequest = vi.fn();
@@ -408,11 +408,45 @@ describe("createMagia Proxy", () => {
       },
     }) as any;
 
-    await magia.petstore.getPetById.fetch({ petId: 1 });
+    await magia.petstore.getPetById.fetch(
+      { petId: 1 },
+      { context: { requiresAuth: true, traceId: "abc-123" } },
+    );
+
     expect(onRequest).toHaveBeenCalledOnce();
+    const ctx = onRequest.mock.calls[0][0];
+    expect(ctx.api).toBe("petstore");
+    expect(ctx.operation).toBe("getPetById");
+    expect(ctx.method).toBe("GET");
+    expect(ctx.url).toContain("/pet/1");
+    expect(ctx.context).toEqual({ requiresAuth: true, traceId: "abc-123" });
   });
 
-  it("passes onResponse interceptor to ofetch", async () => {
+  it("onRequest can mutate headers for auth injection", async () => {
+    const fetch = mockFetch({ id: 1 });
+    globalThis.fetch = fetch;
+
+    const magia = createMagia({
+      manifest,
+      apis: {
+        petstore: {
+          baseUrl: "https://petstore.example.com",
+          onRequest(ctx) {
+            if (ctx.context.requiresAuth) {
+              ctx.headers["Authorization"] = "Bearer injected-token";
+            }
+          },
+        },
+      },
+    }) as any;
+
+    await magia.petstore.getPetById.fetch({ petId: 1 }, { context: { requiresAuth: true } });
+
+    const [, init] = fetch.mock.calls[0];
+    expect(getHeader(init, "authorization")).toBe("Bearer injected-token");
+  });
+
+  it("onResponse receives MagiaResponseContext with status and data", async () => {
     const fetch = mockFetch({ id: 1, name: "Rex" });
     globalThis.fetch = fetch;
     const onResponse = vi.fn();
@@ -428,11 +462,17 @@ describe("createMagia Proxy", () => {
     }) as any;
 
     await magia.petstore.getPetById.fetch({ petId: 1 });
+
     expect(onResponse).toHaveBeenCalledOnce();
+    const ctx = onResponse.mock.calls[0][0];
+    expect(ctx.api).toBe("petstore");
+    expect(ctx.operation).toBe("getPetById");
+    expect(ctx.status).toBe(200);
+    expect(ctx.data).toEqual({ id: 1, name: "Rex" });
   });
 
-  it("passes onResponseError interceptor to ofetch on error", async () => {
-    const fetch = mockFetch({}, 500);
+  it("onResponseError receives MagiaResponseContext on error", async () => {
+    const fetch = mockFetch({ error: "internal" }, 500);
     globalThis.fetch = fetch;
     const onResponseError = vi.fn();
 
@@ -447,7 +487,31 @@ describe("createMagia Proxy", () => {
     }) as any;
 
     await expect(magia.petstore.getPetById.fetch({ petId: 1 })).rejects.toThrow();
+
     expect(onResponseError).toHaveBeenCalledOnce();
+    const ctx = onResponseError.mock.calls[0][0];
+    expect(ctx.api).toBe("petstore");
+    expect(ctx.operation).toBe("getPetById");
+    expect(ctx.status).toBe(500);
+  });
+
+  it("context defaults to empty object when not provided", async () => {
+    const fetch = mockFetch({ id: 1 });
+    globalThis.fetch = fetch;
+    const onRequest = vi.fn();
+
+    const magia = createMagia({
+      manifest,
+      apis: {
+        petstore: {
+          baseUrl: "https://petstore.example.com",
+          onRequest,
+        },
+      },
+    }) as any;
+
+    await magia.petstore.getPetById.fetch({ petId: 1 });
+    expect(onRequest.mock.calls[0][0].context).toEqual({});
   });
 
   it("safeFetch is available on operations", async () => {

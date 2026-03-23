@@ -1,5 +1,3 @@
-import type { FetchOptions } from "ofetch";
-
 // ---------------------------------------------------------------------------
 // Manifest (internal — describes operations for the Proxy)
 // ---------------------------------------------------------------------------
@@ -59,11 +57,49 @@ export type LazyManifest = Record<string, LazyManifestApi>;
 // Fetch options & response
 // ---------------------------------------------------------------------------
 
+/** Augmentable context — users extend via `declare module "magia-api"` */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface MagiaContext {
+  [key: string]: unknown;
+}
+
 export interface MagiaFetchOptions {
   signal?: AbortSignal;
   raw?: boolean;
   query?: Record<string, unknown>;
   headers?: Record<string, string>;
+  /** Custom per-request context passed to interceptors (onRequest, onResponse, onResponseError) */
+  context?: MagiaContext;
+}
+
+// ---------------------------------------------------------------------------
+// Interceptor types (magia-owned — no ofetch types exposed)
+// ---------------------------------------------------------------------------
+
+export interface MagiaRequestContext {
+  /** API name from manifest */
+  readonly api: string;
+  /** Operation name from manifest */
+  readonly operation: string;
+  /** Full URL being requested */
+  readonly url: string;
+  /** HTTP method */
+  readonly method: string;
+  /** Request headers — mutable, modify to inject auth, tracing, etc. */
+  headers: Record<string, string>;
+  /** Request body — mutable */
+  body: unknown;
+  /** Custom per-request context from .fetch() options */
+  readonly context: MagiaContext;
+}
+
+export interface MagiaResponseContext extends MagiaRequestContext {
+  /** HTTP status code */
+  readonly status: number;
+  /** Parsed response data */
+  readonly data: unknown;
+  /** Raw Response object */
+  readonly response: Response;
 }
 
 export interface MagiaSubscribeOptions {
@@ -203,15 +239,15 @@ export interface MagiaClient {
 export interface MagiaApiConfig {
   baseUrl: string;
   /** Number of retry attempts for failed requests (default: 0, false to disable) */
-  retry?: FetchOptions["retry"];
+  retry?: number | false;
   /** Request timeout in milliseconds */
-  timeout?: FetchOptions["timeout"];
-  /** Called before each request — use for auth injection, logging, etc. */
-  onRequest?: FetchOptions["onRequest"];
+  timeout?: number;
+  /** Called before each request — mutate ctx.headers to inject auth, tracing, etc. */
+  onRequest?: (ctx: MagiaRequestContext) => void | Promise<void>;
   /** Called after each successful response — use for data transforms, logging */
-  onResponse?: FetchOptions["onResponse"];
+  onResponse?: (ctx: MagiaResponseContext) => void | Promise<void>;
   /** Called on error responses (4xx/5xx) — fires before MagiaError wrapping */
-  onResponseError?: FetchOptions["onResponseError"];
+  onResponseError?: (ctx: MagiaResponseContext) => void | Promise<void>;
   fetchOptions?: {
     headers?:
       | Record<string, string>
