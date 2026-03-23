@@ -38,9 +38,9 @@ export const magia = createMagia({
 | `baseUrl` | `string` | Base URL for the API |
 | `retry` | `number \| false` | Retry count for failed requests (default: `0`) |
 | `timeout` | `number` | Request timeout in milliseconds |
-| `onRequest` | `(ctx: MagiaRequestContext) => void` | Hook before each request — mutate headers, inject auth |
-| `onResponse` | `(ctx: MagiaResponseContext) => void` | Hook after each response — logging, data transforms |
-| `onResponseError` | `(ctx: MagiaResponseContext) => void` | Hook on error responses (4xx/5xx) |
+| `onRequest` | `(ctx: MagiaRequestContext) => void \| Promise<void>` | Hook before each request — mutate headers, inject auth |
+| `onResponse` | `(ctx: MagiaResponseContext) => void \| Promise<void>` | Hook after each response — logging, data transforms |
+| `onResponseError` | `(ctx: MagiaResponseContext) => void \| Promise<void>` | Hook on error responses (4xx/5xx) |
 | `fetchOptions.headers` | `Record \| () => Record \| () => Promise<Record>` | Static or dynamic headers |
 
 ## Usage
@@ -83,6 +83,31 @@ if (error) {
 } else {
   // data is Pet, error is undefined
   console.log(data.name);
+}
+```
+
+### Subscribe (SSE / GraphQL Subscriptions)
+
+Stream real-time events from SSE endpoints or GraphQL subscriptions:
+
+```typescript
+// REST SSE (auto-detected from text/event-stream in OpenAPI spec)
+for await (const event of magia.ai.streamChat.subscribe({ message: "hello" })) {
+  console.log(event); // fully typed
+}
+
+// GraphQL subscription
+for await (const event of magia.github.onIssueCreated.subscribe({ repo: "my-repo" })) {
+  console.log(event);
+}
+
+// With AbortSignal
+const controller = new AbortController();
+for await (const event of magia.ai.streamChat.subscribe(
+  { message: "hello" },
+  { signal: controller.signal },
+)) {
+  console.log(event);
 }
 ```
 

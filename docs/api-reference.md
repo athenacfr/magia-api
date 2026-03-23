@@ -106,11 +106,12 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 
 | Type | Description |
 |------|-------------|
-| `MagiaOperation<TInput, TOutput, TErrors>` | GET operations — `.fetch()`, `.isError()` |
-| `MagiaMutation<TInput, TOutput, TErrors>` | POST/PUT/DELETE operations — `.fetch()`, `.isError()` |
+| `MagiaOperation<TInput, TOutput, TErrors>` | GET operations — `.fetch()`, `.safeFetch()`, `.isError()` |
+| `MagiaMutation<TInput, TOutput, TErrors>` | POST/PUT/DELETE operations — `.fetch()`, `.safeFetch()`, `.isError()` |
+| `MagiaSSEOperation<TInput, TEvent>` | SSE/subscription operations — `.subscribe()` |
 | `MagiaTanStackQuery<TInput, TOutput>` | `.queryOptions()`, `.queryKey()` |
 | `MagiaTanStackMutation<TInput, TOutput>` | `.mutationOptions()`, `.mutationKey()` |
-| `MagiaTanStackInfiniteQuery<TInput, TOutput>` | `.infiniteQueryOptions()` (future) |
+| `MagiaTanStackInfiniteQuery<TInput, TOutput>` | `.infiniteQueryOptions()` for paginated endpoints |
 
 ### Manifest Types
 
@@ -119,7 +120,17 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 | `Manifest` | `Record<string, ManifestApi>` |
 | `ManifestApi` | `{ plugins: MagiaPlugin[], operations: Record<string, ManifestEntry> }` |
 | `ManifestEntry` | `RestManifestEntry \| GraphQLManifestEntry` |
+| `LazyManifest` | `Record<string, ManifestApi \| () => Promise<ManifestApi>>` — for code splitting |
+| `LazyManifestApi` | `ManifestApi \| () => Promise<ManifestApi>` |
 | `ParamLocation` | `"path" \| "query" \| "body" \| "header"` |
+| `PaginationMeta` | `{ style, pageParam, sizeParam? }` — for infinite query detection |
+| `PaginationStyle` | `"offset" \| "cursor" \| "page"` |
+
+### Subscribe Types
+
+| Type | Description |
+|------|-------------|
+| `MagiaSubscribeOptions` | `{ signal?, reconnect?, lastEventId? }` |
 
 ## Client Methods
 
@@ -129,6 +140,7 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 |--------|-------------|
 | `.fetch(input?, opts?)` | Execute the API call (throws on error) |
 | `.safeFetch(input?, opts?)` | Execute the API call (returns `{ data, error }`) |
+| `.subscribe(input?, opts?)` | SSE/subscription stream (returns `AsyncIterable`) |
 | `.isError(error, code)` | Type guard for `MagiaError` with specific status/code |
 
 ### On operations (with `tanstackQuery()` plugin)
@@ -139,6 +151,7 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 | `.queryKey(input?)` | Returns hierarchical query key |
 | `.mutationOptions(opts?)` | Returns `{ mutationFn, mutationKey }` for `useMutation()` |
 | `.mutationKey()` | Returns mutation key |
+| `.infiniteQueryOptions(input?, opts?)` | Returns options for `useInfiniteQuery()` (paginated endpoints) |
 
 ### On API namespace (`magia.<api>`)
 

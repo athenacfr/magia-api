@@ -11,11 +11,12 @@ try {
   await magia.petstore.getPetById.fetch({ petId: 999 });
 } catch (err) {
   if (err instanceof MagiaError) {
-    err.status;    // HTTP status code (0 for network errors)
-    err.code;      // Error code string ("404", "NETWORK_ERROR", "TIMEOUT")
+    err.status;    // HTTP status code (0 for network/abort/timeout)
+    err.code;      // "404", "NETWORK_ERROR", "TIMEOUT", "ABORTED", "GRAPHQL_ERROR"
     err.api;       // API name ("petstore")
     err.operation; // Operation name ("getPetById")
     err.data;      // Error response body (parsed JSON)
+    err.response;  // Raw Response object (undefined for network errors)
   }
 }
 ```
@@ -24,11 +25,12 @@ try {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `status` | `number` | HTTP status code. `0` for network/timeout errors. |
-| `code` | `string` | Error code. Status as string, or `"NETWORK_ERROR"` / `"TIMEOUT"` / `"ABORTED"`. |
+| `status` | `number` | HTTP status code. `0` for network/timeout/abort errors. |
+| `code` | `string` | Status as string (`"404"`), or `"NETWORK_ERROR"` / `"TIMEOUT"` / `"ABORTED"` / `"GRAPHQL_ERROR"`. |
 | `api` | `string` | API name from config. |
 | `operation` | `string` | Operation name. |
-| `data` | `unknown` | Parsed error response body. |
+| `data` | `unknown` | Parsed error response body. GraphQL errors: array of error objects. |
+| `response` | `Response \| undefined` | Raw Response object. `undefined` for network/timeout errors. |
 
 ### Helper Methods
 
