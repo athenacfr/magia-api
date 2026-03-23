@@ -25,7 +25,7 @@ try {
 | Property | Type | Description |
 |----------|------|-------------|
 | `status` | `number` | HTTP status code. `0` for network/timeout errors. |
-| `code` | `string` | Error code. Status as string, or `"NETWORK_ERROR"` / `"TIMEOUT"`. |
+| `code` | `string` | Error code. Status as string, or `"NETWORK_ERROR"` / `"TIMEOUT"` / `"ABORTED"`. |
 | `api` | `string` | API name from config. |
 | `operation` | `string` | Operation name. |
 | `data` | `unknown` | Parsed error response body. |
@@ -33,12 +33,34 @@ try {
 ### Helper Methods
 
 ```typescript
-err.isNotFound();     // status === 404
-err.isAuthError();    // status === 401
-err.isForbidden();    // status === 403
-err.isNetworkError(); // code === "NETWORK_ERROR"
-err.isTimeout();      // code === "TIMEOUT"
+err.isNotFound();       // status === 404
+err.isAuthError();      // status === 401 || 403
+err.isValidationError() // status === 400 || 422
+err.isServerError();    // status >= 500
+err.isNetworkError();   // code === "NETWORK_ERROR"
+err.isTimeout();        // code === "TIMEOUT"
+err.isAborted();        // code === "ABORTED"
 ```
+
+## Safe Fetch (no throw)
+
+Returns `{ data, error }` instead of throwing:
+
+```typescript
+const { data, error } = await magia.petstore.getPetById.safeFetch({ petId: 999 });
+
+if (error) {
+  // error is MagiaError, data is undefined
+  if (error.isNotFound()) {
+    showNotFound();
+  }
+} else {
+  // data is Pet, error is undefined
+  renderPet(data);
+}
+```
+
+`onError` and `transformError` still fire — only the throw is suppressed.
 
 ## Typed Error Guards
 
@@ -74,18 +96,41 @@ const magia = createMagia({
 
 The `onError` handler is called before the error is thrown, so the caller can still catch it.
 
-## Network and Timeout Errors
+## Error Transform
+
+Transform errors before `onError` and throwing:
+
+```typescript
+const magia = createMagia({
+  manifest,
+  apis: { /* ... */ },
+  transformError: (error) => {
+    return new MagiaError(`App: ${error.message}`, {
+      ...error,
+      code: mapToAppCode(error.code),
+    });
+  },
+  onError: (error) => {
+    // Receives the transformed error
+    Sentry.captureException(error);
+  },
+});
+```
+
+## Network, Timeout, and Abort Errors
 
 Network failures and aborted requests are wrapped in `MagiaError` with `status: 0`:
 
 ```typescript
 // Network error
-err.status === 0;
 err.code === "NETWORK_ERROR";
 err.isNetworkError(); // true
 
-// AbortSignal timeout
-err.status === 0;
+// Internal timeout (ofetch timeout)
 err.code === "TIMEOUT";
 err.isTimeout(); // true
+
+// User-initiated abort (via AbortController signal)
+err.code === "ABORTED";
+err.isAborted(); // true
 ```

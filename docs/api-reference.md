@@ -92,11 +92,15 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 
 | Type | Description |
 |------|-------------|
-| `MagiaConfig<TManifest>` | `createMagia()` config — `manifest`, `apis`, `onError?` |
-| `MagiaApiConfig` | Per-API config — `baseUrl`, `fetchOptions?` |
+| `MagiaConfig<TManifest>` | `createMagia()` config — `manifest`, `apis`, `onError?`, `transformError?` |
+| `MagiaApiConfig` | Per-API config — `baseUrl`, `retry?`, `timeout?`, `onRequest?`, `onResponse?`, `onResponseError?`, `fetchOptions?` |
 | `MagiaClient` | Client interface (augmented by generated `.d.ts`) |
-| `MagiaFetchOptions` | `{ signal?, raw?, query?, headers? }` |
+| `MagiaFetchOptions` | `{ signal?, raw?, query?, headers?, context? }` |
 | `MagiaRawResponse<T>` | `{ data: T, headers: Headers, status: number }` |
+| `MagiaSafeResult<T>` | `{ data: T, error: undefined } \| { data: undefined, error: MagiaError }` |
+| `MagiaContext` | Augmentable interface for per-request context |
+| `MagiaRequestContext` | Hook context — `api`, `operation`, `url`, `method`, `headers`, `body`, `context` |
+| `MagiaResponseContext` | Extends `MagiaRequestContext` with `status`, `data`, `response` |
 
 ### Operation Types (Module Augmentation)
 
@@ -123,7 +127,8 @@ Error class for all API failures. See [Error Handling](error-handling.md).
 
 | Method | Description |
 |--------|-------------|
-| `.fetch(input?, opts?)` | Execute the API call |
+| `.fetch(input?, opts?)` | Execute the API call (throws on error) |
+| `.safeFetch(input?, opts?)` | Execute the API call (returns `{ data, error }`) |
 | `.isError(error, code)` | Type guard for `MagiaError` with specific status/code |
 
 ### On operations (with `tanstackQuery()` plugin)

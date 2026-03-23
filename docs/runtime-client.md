@@ -28,13 +28,19 @@ export const magia = createMagia({
 |-------|------|-------------|
 | `manifest` | `Manifest` | Generated manifest from `magia.gen.ts` |
 | `apis` | `{ [K in keyof Manifest]: MagiaApiConfig }` | Per-API runtime config — keys must match manifest |
-| `onError` | `(error: MagiaError) => void` | Global error handler |
+| `onError` | `(error: MagiaError) => void` | Global error handler (fires after `transformError`) |
+| `transformError` | `(error: MagiaError) => MagiaError` | Transform errors before `onError` and throwing |
 
 ### Per-API Config
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `baseUrl` | `string` | Base URL for the API |
+| `retry` | `number \| false` | Retry count for failed requests (default: `0`) |
+| `timeout` | `number` | Request timeout in milliseconds |
+| `onRequest` | `(ctx: MagiaRequestContext) => void` | Hook before each request — mutate headers, inject auth |
+| `onResponse` | `(ctx: MagiaResponseContext) => void` | Hook after each response — logging, data transforms |
+| `onResponseError` | `(ctx: MagiaResponseContext) => void` | Hook on error responses (4xx/5xx) |
 | `fetchOptions.headers` | `Record \| () => Record \| () => Promise<Record>` | Static or dynamic headers |
 
 ## Usage
@@ -62,6 +68,22 @@ await magia.petstore.createPet.fetch(
   { name: "Rex" },
   { query: { dryRun: true }, headers: { "X-Custom": "value" } },
 );
+```
+
+### Safe Fetch (no throw)
+
+Returns a discriminated union instead of throwing:
+
+```typescript
+const { data, error } = await magia.petstore.getPetById.safeFetch({ petId: 1 });
+
+if (error) {
+  // error is MagiaError, data is undefined
+  console.error(error.message);
+} else {
+  // data is Pet, error is undefined
+  console.log(data.name);
+}
 ```
 
 ### Parameter Mapping
@@ -100,6 +122,72 @@ Headers can be:
 - Sync function: `() => ({ Authorization: "Bearer ..." })`
 - Async function: `async () => ({ Authorization: await getToken() })`
 
+## Interceptors
+
+Interceptors receive a `MagiaRequestContext` or `MagiaResponseContext` with `api`, `operation`, `url`, `method`, and a per-request `context` bag:
+
+```typescript
+const magia = createMagia({
+  manifest,
+  apis: {
+    petstore: {
+      baseUrl: "/api",
+      onRequest(ctx) {
+        // ctx.api, ctx.operation, ctx.url, ctx.method, ctx.context
+        if (ctx.context.requiresAuth) {
+          ctx.headers["Authorization"] = `Bearer ${getToken()}`;
+        }
+      },
+      onResponse(ctx) {
+        console.log(`${ctx.api}.${ctx.operation} → ${ctx.status}`);
+      },
+      onResponseError(ctx) {
+        metrics.increment(`api.error.${ctx.status}`);
+      },
+    },
+  },
+});
+
+// Pass context per-request
+await magia.petstore.getMyPets.fetch({}, { context: { requiresAuth: true } });
+```
+
+### Typed Context
+
+Augment `MagiaContext` for type-safe custom context:
+
+```typescript
+// src/magia-context.d.ts
+declare module "magia-api" {
+  interface MagiaContext {
+    requiresAuth?: boolean;
+    traceId?: string;
+  }
+}
+```
+
+## Error Transform
+
+Transform errors before they reach `onError` or are thrown:
+
+```typescript
+const magia = createMagia({
+  manifest,
+  apis: { /* ... */ },
+  transformError: (error) => {
+    // Map to app-specific error codes
+    return new MagiaError(`App: ${error.message}`, {
+      ...error,
+      code: mapToAppCode(error.code),
+    });
+  },
+  onError: (error) => {
+    // Receives the transformed error
+    Sentry.captureException(error);
+  },
+});
+```
+
 ## Global Error Handler
 
 ```typescript
@@ -107,7 +195,7 @@ const magia = createMagia({
   manifest,
   apis: { /* ... */ },
   onError: (error) => {
-    // Called for every request error
+    // Called for every request error (after transformError)
     Sentry.captureException(error);
   },
 });

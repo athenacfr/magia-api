@@ -136,7 +136,9 @@ src/magia.gen.ts
 - **Tree-shakeable** — Per-API manifest exports. Only bundle what you use.
 - **Multiple APIs** — One config, many APIs. REST and GraphQL.
 - **CLI** — `magia-api generate` for CI. `magia-api validate` for checks.
-- **Error handling** — `MagiaError` with typed status codes and `.isError()` type guard.
+- **Error handling** — `MagiaError`, `.safeFetch()`, `transformError`, typed `.isError()` guard.
+- **Interceptors** — Per-API `onRequest`/`onResponse` hooks with typed context. Inject auth, trace requests.
+- **Retry & timeout** — Per-API `retry` and `timeout` config.
 
 ## Schema Sources
 
