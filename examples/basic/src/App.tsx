@@ -2,11 +2,10 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { magia } from './magia'
 
-const m = magia as any
 
 function PetList() {
   const { data: pets, isLoading, error } = useQuery(
-    m.petstore.findPetsByStatus.queryOptions({ status: 'available' }),
+    magia.petstore.findPetsByStatus.queryOptions({ status: 'available' }),
   )
 
   if (isLoading) return <p>Loading pets...</p>
@@ -22,14 +21,14 @@ function PetList() {
           </li>
         ))}
       </ul>
-      {pets?.length > 10 && <p>...and {pets.length - 10} more</p>}
+      {pets&&pets?.length > 10 && <p>...and {pets.length - 10} more</p>}
     </div>
   )
 }
 
 function PetDetail({ petId }: { petId: number }) {
   const { data: pet, isLoading, error } = useQuery(
-    m.petstore.getPetById.queryOptions({ petId }),
+    magia.petstore.getPetById.queryOptions({ petId }),
   )
 
   if (isLoading) return <p>Loading pet #{petId}...</p>
@@ -48,10 +47,10 @@ function AddPet() {
   const [name, setName] = useState('')
 
   const mutation = useMutation({
-    ...m.petstore.addPet.mutationOptions(),
+    ...magia.petstore.addPet.mutationOptions(),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: m.petstore.findPetsByStatus.queryKey(),
+        queryKey: magia.petstore.findPetsByStatus.queryKey(),
       })
       setName('')
     },
@@ -92,16 +91,16 @@ function QueryKeys() {
       <h2>TanStack Query Integration</h2>
       <pre>
         {`// queryKey (with input)
-${JSON.stringify(m.petstore.getPetById.queryKey({ petId: 1 }))}
+${JSON.stringify(magia.petstore.getPetById.queryKey({ petId: 1 }))}
 
 // queryKey (without input — for partial invalidation)
-${JSON.stringify(m.petstore.getPetById.queryKey())}
+${JSON.stringify(magia.petstore.getPetById.queryKey())}
 
 // mutationKey
-${JSON.stringify(m.petstore.addPet.mutationKey())}
+${JSON.stringify(magia.petstore.addPet.mutationKey())}
 
 // pathKey (invalidate all petstore queries)
-${JSON.stringify(m.petstore.pathKey())}
+${JSON.stringify(magia.petstore.pathKey())}
 `}
       </pre>
     </div>

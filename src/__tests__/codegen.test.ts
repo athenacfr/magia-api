@@ -6,8 +6,17 @@ import { tmpdir } from 'node:os'
 import { copyFileSync } from 'node:fs'
 import { parseSpec } from '../codegen/parser'
 import { extractOperations } from '../codegen/extractor'
-import { generateManifestSource } from '../codegen/manifest-gen'
-import { generateDts } from '../codegen/dts-gen'
+import { generateGenFile } from '../codegen/gen-file'
+
+function mockExportedTypes(ops: { operationName: string }[]): Set<string> {
+  const types = new Set<string>()
+  for (const op of ops) {
+    const cap = op.operationName[0].toUpperCase() + op.operationName.slice(1)
+    types.add(`${cap}Data`)
+    types.add(`${cap}Response`)
+  }
+  return types
+}
 import { generate } from '../codegen/index'
 
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'petstore-mini.json')
@@ -119,69 +128,57 @@ describe('extractOperations', () => {
     }))
     const ops = extractOperations(specNoId)
     expect(ops).toHaveLength(1)
-    // Fallback: GET /users/{userId}/posts → getUsersUserIdPosts
     expect(ops[0].operationName).toMatch(/get/i)
     expect(ops[0].operationName).toMatch(/users/i)
   })
 })
 
 // -----------------------------------------------------------------------
-// Manifest generator tests
+// Gen file tests
 // -----------------------------------------------------------------------
 
-describe('generateManifestSource', () => {
-  it('generates valid manifest source', () => {
+describe('generateGenFile', () => {
+  it('generates manifest + module augmentation in one file', () => {
     const spec = parseSpec(FIXTURE_TEXT)
     const ops = extractOperations(spec)
-    const source = generateManifestSource({
-      petstore: { operations: ops, plugins: [{ name: 'tanstackQuery' }] },
-    })
-
-    expect(source).toContain('export const manifest')
-    expect(source).toContain('"petstore"')
-    expect(source).toContain('"getPetById"')
-    expect(source).toContain('"tanstackQuery"')
-    expect(source).toContain('"GET"')
-    expect(source).toContain('/pet/{petId}')
-  })
-})
-
-// -----------------------------------------------------------------------
-// .d.ts generator tests
-// -----------------------------------------------------------------------
-
-describe('generateDts', () => {
-  it('generates valid .d.ts augmentation', () => {
-    const spec = parseSpec(FIXTURE_TEXT)
-    const ops = extractOperations(spec)
-    const source = generateDts({
+    const source = generateGenFile({
       petstore: {
         operations: ops,
         plugins: [{ name: 'tanstackQuery' }],
         typesImportPath: '../node_modules/.magia/internals/petstore',
-        spec,
+        exportedTypes: mockExportedTypes(ops),
       },
     })
 
+    // Has manifest
+    expect(source).toContain('export const manifest: Manifest')
+    expect(source).toContain('"getPetById"')
+    expect(source).toContain('"GET"')
+    expect(source).toContain('/pet/{petId}')
+
+    // Has module augmentation
     expect(source).toContain("declare module 'magia-api'")
     expect(source).toContain('interface MagiaClient')
-    expect(source).toContain('petstore:')
     expect(source).toContain('getPetById: MagiaOperation')
     expect(source).toContain('addPet: MagiaMutation')
     expect(source).toContain('MagiaTanStackQuery')
     expect(source).toContain('MagiaTanStackMutation')
     expect(source).toContain("pathKey(): readonly ['magia', 'petstore']")
+
+    // Has imports
+    expect(source).toContain("import type * as petstoreTypes from '../node_modules/.magia/internals/petstore'")
+    expect(source).toContain("import type { Manifest, MagiaOperation, MagiaMutation")
   })
 
   it('omits TQ types when plugin not configured', () => {
     const spec = parseSpec(FIXTURE_TEXT)
     const ops = extractOperations(spec)
-    const source = generateDts({
+    const source = generateGenFile({
       petstore: {
         operations: ops,
         plugins: [],
         typesImportPath: '../node_modules/.magia/internals/petstore',
-        spec,
+        exportedTypes: mockExportedTypes(ops),
       },
     })
 
@@ -199,11 +196,8 @@ describe('generate (full pipeline)', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'magia-codegen-'))
-    // Create src/ so dtsPath defaults to src/magia-api.d.ts
     mkdirSync(join(tmpDir, 'src'))
-    // Create node_modules so .magia/ can be created inside
     mkdirSync(join(tmpDir, 'node_modules'))
-    // Copy fixture spec
     copyFileSync(FIXTURE_PATH, join(tmpDir, 'petstore.json'))
   })
 
@@ -211,7 +205,7 @@ describe('generate (full pipeline)', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('generates manifest and .d.ts from petstore spec', async () => {
+  it('generates magia.gen.ts from petstore spec', async () => {
     const result = await generate({
       config: {
         apis: {
@@ -228,25 +222,23 @@ describe('generate (full pipeline)', () => {
     // No errors
     expect(result.errors).toHaveLength(0)
 
-    // Manifest generated at src/magia.gen.ts
-    expect(result.manifestPath).toBeTruthy()
-    expect(result.manifestPath).toContain('magia.gen.ts')
-    expect(existsSync(result.manifestPath)).toBe(true)
-    const manifestSource = readFileSync(result.manifestPath, 'utf-8')
-    expect(manifestSource).toContain("import type { Manifest } from 'magia-api'")
-    expect(manifestSource).toContain('export const manifest: Manifest')
-    expect(manifestSource).toContain('"getPetById"')
-    expect(manifestSource).toContain('"addPet"')
-    expect(manifestSource).toContain('tanstackQuery')
+    // Single gen file at src/magia.gen.ts
+    expect(result.genFilePath).toBeTruthy()
+    expect(result.genFilePath).toContain('magia.gen.ts')
+    expect(existsSync(result.genFilePath)).toBe(true)
 
-    // .d.ts generated
-    expect(result.dtsPath).toBeTruthy()
-    expect(existsSync(result.dtsPath)).toBe(true)
-    const dtsSource = readFileSync(result.dtsPath, 'utf-8')
-    expect(dtsSource).toContain("declare module 'magia-api'")
-    expect(dtsSource).toContain('getPetById')
-    expect(dtsSource).toContain('MagiaOperation')
-    expect(dtsSource).toContain('MagiaTanStackQuery')
+    const source = readFileSync(result.genFilePath, 'utf-8')
+
+    // Has manifest
+    expect(source).toContain('export const manifest: Manifest')
+    expect(source).toContain('"getPetById"')
+    expect(source).toContain('"addPet"')
+    expect(source).toContain('tanstackQuery')
+
+    // Has module augmentation
+    expect(source).toContain("declare module 'magia-api'")
+    expect(source).toContain('MagiaOperation')
+    expect(source).toContain('MagiaTanStackQuery')
 
     // API stats
     expect(result.apis.petstore.operations).toBe(5)

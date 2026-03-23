@@ -53,11 +53,8 @@ async function runGenerate(filter?: string[]) {
       console.error(`  ${apiName}: ERROR — ${error.message}`)
     }
 
-    if (result.manifestPath) {
-      console.log(`Manifest: ${result.manifestPath}`)
-    }
-    if (result.dtsPath) {
-      console.log(`Types: ${result.dtsPath}`)
+    if (result.genFilePath) {
+      console.log(`Generated: ${result.genFilePath}`)
     }
 
     const elapsed = Date.now() - startTime

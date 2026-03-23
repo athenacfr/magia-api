@@ -1,5 +1,5 @@
 import { resolve, relative, dirname } from 'node:path'
-import { mkdir, writeFile, rename } from 'node:fs/promises'
+import { mkdir, writeFile, rename, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 
 import type { DefineConfigInput, MagiaPlugin } from '../types'
@@ -7,8 +7,7 @@ import { resolveSchema } from '../schema'
 import { parseSpec } from './parser'
 import { extractOperations, type ExtractedOperation } from './extractor'
 import { generateTypes, writeSpecFile } from './hey-api'
-import { generateManifestSource } from './manifest-gen'
-import { generateDts } from './dts-gen'
+import { generateGenFile } from './gen-file'
 
 export interface GenerateOptions {
   config: DefineConfigInput
@@ -18,28 +17,19 @@ export interface GenerateOptions {
 }
 
 export interface GenerateResult {
-  manifestPath: string
-  dtsPath: string
+  genFilePath: string
   apis: Record<string, { operations: number; typesDir: string }>
   errors: Array<{ apiName: string; error: Error }>
 }
 
 /**
- * Resolve where generated files go in the user's source tree.
+ * Resolve where magia.gen.ts goes.
  * Default: src/ if it exists, else project root.
  */
-function resolveGenDir(cwd: string): string {
+function resolveGenFilePath(cwd: string): string {
   const srcDir = resolve(cwd, 'src')
-  return existsSync(srcDir) ? srcDir : cwd
-}
-
-function resolveDtsPath(cwd: string, config: DefineConfigInput): string {
-  if (config.dtsPath) return resolve(cwd, config.dtsPath)
-  return resolve(resolveGenDir(cwd), 'magia-api.d.ts')
-}
-
-function resolveManifestPath(cwd: string): string {
-  return resolve(resolveGenDir(cwd), 'magia.gen.ts')
+  const dir = existsSync(srcDir) ? srcDir : cwd
+  return resolve(dir, 'magia.gen.ts')
 }
 
 /**
@@ -61,17 +51,16 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
   const outputDir = resolve(cwd, 'node_modules', '.magia')
   await mkdir(outputDir, { recursive: true })
 
+  const genFilePath = resolveGenFilePath(cwd)
   const apiNames = opts.filter ?? Object.keys(opts.config.apis)
-  const manifestApis: Record<string, { operations: ExtractedOperation[]; plugins: MagiaPlugin[] }> = {}
-  const dtsApis: Record<string, {
+  const genApis: Record<string, {
     operations: ExtractedOperation[]
     plugins: MagiaPlugin[]
     typesImportPath: string
-    spec: ReturnType<typeof parseSpec>
+    exportedTypes: Set<string>
   }> = {}
   const result: GenerateResult = {
-    manifestPath: '',
-    dtsPath: '',
+    genFilePath: '',
     apis: {},
     errors: [],
   }
@@ -118,22 +107,18 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
         outputDir,
       })
 
-      // 6. Collect for manifest and .d.ts generation
-      const plugins = apiConfig.plugins ?? []
-      manifestApis[apiName] = { operations, plugins }
+      // 6. Scan Hey API output for available type names
+      const indexContent = await readFile(resolve(typesDir, 'index.ts'), 'utf-8')
+      const exportedTypes = new Set(
+        [...indexContent.matchAll(/\b(\w+(?:Data|Response))\b/g)].map(m => m[1]),
+      )
 
-      // Calculate relative import path from .d.ts location to Hey API types
-      const dtsPath = resolveDtsPath(cwd, opts.config)
-      const typesRelative = relative(dirname(dtsPath), typesDir).replace(/\\/g, '/')
+      // 7. Collect for gen file
+      const plugins = apiConfig.plugins ?? []
+      const typesRelative = relative(dirname(genFilePath), typesDir).replace(/\\/g, '/')
       const typesImportPath = typesRelative.startsWith('.') ? typesRelative : `./${typesRelative}`
 
-      dtsApis[apiName] = {
-        operations,
-        plugins,
-        typesImportPath,
-        spec,
-      }
-
+      genApis[apiName] = { operations, plugins, typesImportPath, exportedTypes }
       result.apis[apiName] = { operations: operations.length, typesDir }
     } catch (err) {
       result.errors.push({
@@ -143,20 +128,11 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     }
   }
 
-  // 7. Generate magia.gen.ts (manifest) in user's src/
-  if (Object.keys(manifestApis).length > 0) {
-    const manifestSource = generateManifestSource(manifestApis)
-    const manifestPath = resolveManifestPath(cwd)
-    await atomicWrite(manifestPath, manifestSource)
-    result.manifestPath = manifestPath
-  }
-
-  // 8. Generate magia-api.d.ts (type augmentation) in user's src/
-  if (Object.keys(dtsApis).length > 0) {
-    const dtsSource = generateDts(dtsApis)
-    const dtsPath = resolveDtsPath(cwd, opts.config)
-    await atomicWrite(dtsPath, dtsSource)
-    result.dtsPath = dtsPath
+  // 7. Generate magia.gen.ts (manifest + type augmentation)
+  if (Object.keys(genApis).length > 0) {
+    const source = generateGenFile(genApis)
+    await atomicWrite(genFilePath, source)
+    result.genFilePath = genFilePath
   }
 
   return result
