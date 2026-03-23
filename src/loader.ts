@@ -4,10 +4,10 @@ import { existsSync } from 'node:fs'
 import type { DefineConfigInput } from './types'
 
 const CONFIG_FILENAMES = [
-  'magia-api.config.ts',
-  'magia-api.config.js',
-  'magia-api.config.mts',
-  'magia-api.config.mjs',
+  'magia.config.ts',
+  'magia.config.js',
+  'magia.config.mts',
+  'magia.config.mjs',
 ]
 
 /**
@@ -59,7 +59,7 @@ export async function resolveConfig(
   const configPath = findConfigFile(cwd)
   if (!configPath) {
     throw new Error(
-      `Could not find magia-api.config.ts in ${cwd} or parent directories.\n` +
+      `Could not find magia.config.ts in ${cwd} or parent directories.\n` +
       `Create one with: export default defineConfig({ apis: { ... } })`,
     )
   }

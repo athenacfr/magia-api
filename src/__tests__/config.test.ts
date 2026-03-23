@@ -88,27 +88,27 @@ describe('findConfigFile', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('finds magia-api.config.ts in cwd', () => {
-    writeFileSync(join(tmpDir, 'magia-api.config.ts'), 'export default {}')
-    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia-api.config.ts'))
+  it('finds magia.config.ts in cwd', () => {
+    writeFileSync(join(tmpDir, 'magia.config.ts'), 'export default {}')
+    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia.config.ts'))
   })
 
-  it('finds magia-api.config.js as fallback', () => {
-    writeFileSync(join(tmpDir, 'magia-api.config.js'), 'export default {}')
-    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia-api.config.js'))
+  it('finds magia.config.js as fallback', () => {
+    writeFileSync(join(tmpDir, 'magia.config.js'), 'export default {}')
+    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia.config.js'))
   })
 
   it('prefers .ts over .js', () => {
-    writeFileSync(join(tmpDir, 'magia-api.config.ts'), 'export default {}')
-    writeFileSync(join(tmpDir, 'magia-api.config.js'), 'export default {}')
-    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia-api.config.ts'))
+    writeFileSync(join(tmpDir, 'magia.config.ts'), 'export default {}')
+    writeFileSync(join(tmpDir, 'magia.config.js'), 'export default {}')
+    expect(findConfigFile(tmpDir)).toBe(join(tmpDir, 'magia.config.ts'))
   })
 
   it('searches parent directories', () => {
     const nested = join(tmpDir, 'a', 'b', 'c')
     mkdirSync(nested, { recursive: true })
-    writeFileSync(join(tmpDir, 'magia-api.config.ts'), 'export default {}')
-    expect(findConfigFile(nested)).toBe(join(tmpDir, 'magia-api.config.ts'))
+    writeFileSync(join(tmpDir, 'magia.config.ts'), 'export default {}')
+    expect(findConfigFile(nested)).toBe(join(tmpDir, 'magia.config.ts'))
   })
 
   it('returns null when no config found', () => {
@@ -128,7 +128,7 @@ describe('loadConfig', () => {
   })
 
   it('loads a JS config file with default export', async () => {
-    const configPath = join(tmpDir, 'magia-api.config.mjs')
+    const configPath = join(tmpDir, 'magia.config.mjs')
     writeFileSync(
       configPath,
       `export default { apis: { test: { type: 'rest', schema: './spec.json' } } }`,
@@ -139,7 +139,7 @@ describe('loadConfig', () => {
   })
 
   it('throws when no default export with apis field', async () => {
-    const configPath = join(tmpDir, 'magia-api.config.mjs')
+    const configPath = join(tmpDir, 'magia.config.mjs')
     writeFileSync(configPath, `export const foo = 'bar'`)
 
     await expect(loadConfig(configPath)).rejects.toThrow("'apis' field")
@@ -158,7 +158,7 @@ describe('resolveConfig', () => {
   })
 
   it('finds and loads config from cwd', async () => {
-    const configPath = join(tmpDir, 'magia-api.config.mjs')
+    const configPath = join(tmpDir, 'magia.config.mjs')
     writeFileSync(
       configPath,
       `export default { apis: { pet: { type: 'rest', schema: './s.json' } } }`,
