@@ -380,7 +380,7 @@ describe("generateGenFile", () => {
     expect(source).toContain("MagiaError");
   });
 
-  it("emits MagiaSSEOperation for SSE endpoints", () => {
+  it("emits MagiaSubscription for SSE endpoints", () => {
     const source = generateGenFile({
       ai: {
         apiType: "rest",
@@ -402,8 +402,8 @@ describe("generateGenFile", () => {
       },
     });
 
-    expect(source).toContain("MagiaSSEOperation");
-    expect(source).toContain("streamChat: MagiaSSEOperation");
+    expect(source).toContain("MagiaSubscription");
+    expect(source).toContain("streamChat: MagiaSubscription");
     // SSE ops should NOT have MagiaOperation or MagiaMutation
     expect(source).not.toContain("streamChat: MagiaOperation");
   });

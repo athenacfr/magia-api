@@ -4,9 +4,9 @@ import { PokemonTab } from "./components/PokemonTab";
 import { FeaturesTab } from "./components/FeaturesTab";
 
 const tabs = [
+  { id: "features", label: "Features", badge: "API" },
   { id: "rickandmorty", label: "Rick and Morty", badge: "GraphQL" },
   { id: "pokemon", label: "Pokemon", badge: "REST" },
-  { id: "features", label: "Features", badge: "API" },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -18,7 +18,7 @@ const badgeColors: Record<string, string> = {
 };
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("rickandmorty");
+  const [activeTab, setActiveTab] = useState<TabId>("features");
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">

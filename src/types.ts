@@ -23,6 +23,8 @@ export interface RestManifestEntry {
   multipart?: boolean;
   /** true when response is text/event-stream (SSE) */
   sse?: boolean;
+  /** true when operation supports WebSocket (detected via x-websocket extension) */
+  ws?: boolean;
   /** Pagination metadata for infinite query support */
   pagination?: PaginationMeta;
 }
@@ -105,18 +107,61 @@ export interface MagiaResponseContext extends MagiaRequestContext {
 export interface MagiaSubscribeOptions {
   signal?: AbortSignal;
   reconnect?: boolean;
+  /** SSE only — resume from last event ID */
   lastEventId?: string;
+  /** Per-call transport override (rare escape hatch) */
+  transport?: "sse" | "ws";
 }
 
-export interface MagiaSSEOperation<TInput, TEvent> {
+export interface MagiaSubscription<TInput, TEvent> {
   subscribe(input: TInput, opts?: MagiaSubscribeOptions): AsyncIterable<TEvent>;
 }
+
+/** @deprecated Use MagiaSubscription */
+export type MagiaSSEOperation<TInput, TEvent> = MagiaSubscription<TInput, TEvent>;
 
 export interface MagiaRawResponse<T> {
   data: T;
   headers: Headers;
   status: number;
 }
+
+// ---------------------------------------------------------------------------
+// Type helpers for generated code (openapi-typescript → magia types)
+// ---------------------------------------------------------------------------
+
+/** Flatten openapi-typescript operation params (path, query, header, body) into a single input type */
+export type FlatInput<T> = T extends {
+  parameters?: { path?: infer P; query?: infer Q; header?: infer H };
+  requestBody?: { content: { [k: string]: infer B } };
+}
+  ? (P extends object ? P : {}) &
+      (Q extends object ? Q : {}) &
+      (H extends object ? H : {}) &
+      (B extends object ? B : {})
+  : T extends {
+        parameters?: { path?: infer P; query?: infer Q; header?: infer H };
+      }
+    ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {})
+    : {};
+
+/** Extract success response type (first 2XX response with application/json) */
+export type SuccessResponse<T> = T extends { 200: { content: { "application/json": infer R } } }
+  ? R
+  : T extends { 201: { content: { "application/json": infer R } } }
+    ? R
+    : T extends { 204: { content: { "application/json": infer R } } }
+      ? R
+      : void;
+
+/** Extract error response types as { status: ErrorType } map */
+export type ErrorResponses<T> = {
+  [K in keyof T as K extends `4${string}` | `5${string}` ? K : never]: T[K] extends {
+    content: { "application/json": infer E };
+  }
+    ? E
+    : unknown;
+};
 
 // ---------------------------------------------------------------------------
 // Operation types (used in .d.ts augmentation)
@@ -184,6 +229,17 @@ export interface MagiaTanStackInfiniteQuery<TInput, TOutput> {
   };
 }
 
+export interface MagiaTanStackSubscription<TInput, TEvent> {
+  subscriptionOptions(
+    input: TInput,
+    opts?: { signal?: AbortSignal },
+  ): {
+    queryKey: readonly ["magia", string, string, TInput?];
+    queryFn: (ctx: { signal: AbortSignal }) => AsyncIterable<TEvent>;
+  };
+  subscriptionKey(input?: TInput): readonly ["magia", string, string, TInput?];
+}
+
 // ---------------------------------------------------------------------------
 // defineConfig types (compile-time — magia-api.config.ts)
 // ---------------------------------------------------------------------------
@@ -236,18 +292,51 @@ export interface MagiaClient {
 // createMagia config
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// WebSocket config types
+// ---------------------------------------------------------------------------
+
+export interface MagiaWSConfig {
+  /** Milliseconds before closing idle GraphQL WS connection (default: 3000) */
+  closeTimeout?: number;
+  /** Max reconnection attempts on unexpected disconnect (default: 5) */
+  retryAttempts?: number;
+  /** Custom WebSocket constructor (for older Node.js without native WebSocket) */
+  webSocketImpl?: unknown;
+}
+
+export interface MagiaGraphQLWSConfig extends MagiaWSConfig {
+  /** Auth payload sent in ConnectionInit (graphql-transport-ws protocol). GraphQL only. */
+  connectionParams?:
+    | Record<string, unknown>
+    | (() => Record<string, unknown>)
+    | (() => Promise<Record<string, unknown>>);
+}
+
+// ---------------------------------------------------------------------------
+// createMagia per-API config
+// ---------------------------------------------------------------------------
+
 export interface MagiaApiConfig {
   baseUrl: string;
+  /** WebSocket base URL — enables WS transport for subscriptions */
+  wsUrl?: string;
+  /** WebSocket configuration (narrowed to MagiaGraphQLWSConfig for GraphQL APIs via module augmentation) */
+  ws?: MagiaWSConfig;
   /** Number of retry attempts for failed requests (default: 0, false to disable) */
   retry?: number | false;
   /** Request timeout in milliseconds */
   timeout?: number;
-  /** Called before each request — mutate ctx.headers to inject auth, tracing, etc. */
+  /** Called before each HTTP request — mutate ctx.headers to inject auth, tracing, etc. */
   onRequest?: (ctx: MagiaRequestContext) => void | Promise<void>;
-  /** Called after each successful response — use for data transforms, logging */
+  /** Called after each successful HTTP response — use for data transforms, logging */
   onResponse?: (ctx: MagiaResponseContext) => void | Promise<void>;
-  /** Called on error responses (4xx/5xx) — fires before MagiaError wrapping */
+  /** Called on HTTP error responses (4xx/5xx) — fires before MagiaError wrapping */
   onResponseError?: (ctx: MagiaResponseContext) => void | Promise<void>;
+  /** Called on each incoming subscription event (WS or SSE) before yielding to consumer */
+  onSubscriptionEvent?: (event: unknown) => void;
+  /** Called on subscription connection errors (WS close, SSE fetch error) */
+  onSubscriptionError?: (error: MagiaError) => void;
   fetchOptions?: {
     headers?:
       | Record<string, string>

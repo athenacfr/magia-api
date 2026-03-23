@@ -5,6 +5,8 @@ const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
 
 export interface ExtractedOperation {
   operationName: string;
+  /** Raw operationId from the OpenAPI spec (used for type lookups in openapi-typescript output) */
+  rawOperationId?: string;
   entry: RestManifestEntry;
 }
 
@@ -104,6 +106,13 @@ function isSSE(operation: OpenApiOperation): boolean {
 }
 
 /**
+ * Detect if operation has x-websocket: true extension.
+ */
+function isWebSocket(operation: OpenApiOperation): boolean {
+  return (operation as Record<string, unknown>)["x-websocket"] === true;
+}
+
+/**
  * Detect pagination params from query parameters.
  */
 function detectPagination(params: Record<string, ParamLocation>): PaginationMeta | undefined {
@@ -167,10 +176,12 @@ export function extractOperations(
       const params = extractParams(pathParams, operation);
       const multipart = isMultipart(operation) || undefined;
       const sse = isSSE(operation) || undefined;
+      const ws = isWebSocket(operation) || undefined;
       const pagination = detectPagination(params);
 
       operations.push({
         operationName,
+        rawOperationId: operation.operationId,
         entry: {
           type: "rest",
           method: method.toUpperCase() as RestManifestEntry["method"],
@@ -178,6 +189,7 @@ export function extractOperations(
           params,
           ...(multipart && { multipart }),
           ...(sse && { sse }),
+          ...(ws && { ws }),
           ...(pagination && { pagination }),
         },
       });

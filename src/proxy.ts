@@ -15,6 +15,8 @@ import type {
 } from "./types";
 import { MagiaError } from "./error";
 import { resolveTanStackQueryProp } from "./plugins/tanstack-query";
+import { GraphQLWSClient, type GraphQLWSClientConfig } from "./ws-graphql";
+import { dispatchRestWS } from "./ws-rest";
 
 // ---------------------------------------------------------------------------
 // Per-API ofetch instances (transport only — retry/timeout)
@@ -665,6 +667,37 @@ function dispatchGraphQLSubscription(
 }
 
 // ---------------------------------------------------------------------------
+// GraphQL WS client cache — one per API (like ofetch instances)
+// ---------------------------------------------------------------------------
+
+const wsClients = new WeakMap<MagiaConfig, Map<string, GraphQLWSClient>>();
+
+function getGraphQLWSClient(
+  config: MagiaConfig,
+  apiName: string,
+  apiConfig: MagiaApiConfig,
+): GraphQLWSClient {
+  let cache = wsClients.get(config);
+  if (!cache) {
+    cache = new Map();
+    wsClients.set(config, cache);
+  }
+
+  let client = cache.get(apiName);
+  if (!client) {
+    const wsConfig: GraphQLWSClientConfig = {
+      wsUrl: apiConfig.wsUrl!,
+      ...apiConfig.ws,
+      onSubscriptionEvent: apiConfig.onSubscriptionEvent,
+      onSubscriptionError: apiConfig.onSubscriptionError,
+    };
+    client = new GraphQLWSClient(wsConfig, apiName);
+    cache.set(apiName, client);
+  }
+  return client;
+}
+
+// ---------------------------------------------------------------------------
 // Subscribe dispatch
 // ---------------------------------------------------------------------------
 
@@ -684,7 +717,18 @@ function dispatchSubscribe(
     const apiConfig = config.apis[apiName];
     if (!apiConfig) throw new Error(`No config for API: ${apiName}`);
 
+    const forceTransport = opts.transport;
+
+    // GraphQL subscription
     if (entry.type === "graphql" && entry.kind === "subscription") {
+      const useWS = forceTransport === "ws" || (forceTransport !== "sse" && !!apiConfig.wsUrl);
+
+      if (useWS) {
+        const client = getGraphQLWSClient(config, apiName, apiConfig);
+        yield* client.subscribe(operationName, entry.document, input, opts.signal);
+        return;
+      }
+      // Fall back to existing SSE
       yield* dispatchGraphQLSubscription(
         config,
         apiName,
@@ -697,6 +741,13 @@ function dispatchSubscribe(
       return;
     }
 
+    // REST WS
+    if (entry.type === "rest" && entry.ws && apiConfig.wsUrl && forceTransport !== "sse") {
+      yield* dispatchRestWS(config, apiName, operationName, entry, apiConfig, input, opts);
+      return;
+    }
+
+    // REST SSE (existing)
     if (entry.type === "rest" && entry.sse) {
       yield* dispatchRestSSE(config, apiName, operationName, entry, apiConfig, input, opts);
       return;
@@ -704,7 +755,7 @@ function dispatchSubscribe(
 
     throw new Error(
       `${apiName}.${operationName} does not support .subscribe(). ` +
-        `Only SSE endpoints (text/event-stream) and GraphQL subscriptions support subscriptions.`,
+        `Only SSE endpoints, WS endpoints, and GraphQL subscriptions support subscriptions.`,
     );
   }
 
@@ -909,5 +960,5 @@ export function createMagia<TManifest extends Manifest | LazyManifest>(
   return createProxy(config as MagiaConfig, []) as MagiaClient;
 }
 
-// Re-export for internal use by plugins
-export { buildUrl, extractBody, extractHeaders, resolveHeaders, dispatch };
+// Re-export for internal use by plugins and ws-rest
+export { buildUrl, extractBody, extractHeaders, resolveHeaders, dispatch, dispatchSubscribe };

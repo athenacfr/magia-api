@@ -25,13 +25,23 @@ export type {
   MagiaRequestContext,
   MagiaResponseContext,
   MagiaSubscribeOptions,
+  MagiaSubscription,
+  /** @deprecated Use MagiaSubscription */
   MagiaSSEOperation,
+  // WebSocket config
+  MagiaWSConfig,
+  MagiaGraphQLWSConfig,
+  // Type helpers (used in magia.gen.ts)
+  FlatInput,
+  SuccessResponse,
+  ErrorResponses,
   // Operation types (used in module augmentation)
   MagiaOperation,
   MagiaMutation,
   MagiaTanStackQuery,
   MagiaTanStackMutation,
   MagiaTanStackInfiniteQuery,
+  MagiaTanStackSubscription,
   // Manifest (used in magia.gen.ts)
   Manifest,
   ManifestApi,

@@ -40,59 +40,26 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
 
   // Imports — only include TQ types if any API uses it
   const anyTq = Object.values(apis).some((a) => hasTanStackQuery(a.plugins));
-  const anySSE = Object.values(apis).some((a) =>
+  const anySubscription = Object.values(apis).some((a) =>
     a.apiType === "rest"
-      ? a.operations.some((op) => op.entry.sse)
+      ? a.operations.some((op) => op.entry.sse || op.entry.ws)
       : a.operations.some((op) => op.kind === "subscription"),
   );
   const anyInfinite = Object.values(apis).some((a) =>
     a.operations.some((op) => ("entry" in op ? op.entry.pagination : op.pagination)),
   );
+  const hasRest = Object.values(apis).some((a) => a.apiType === "rest");
   const coreTypes = ["Manifest", "ManifestApi", "MagiaOperation", "MagiaMutation", "MagiaError"];
-  if (anySSE) coreTypes.push("MagiaSSEOperation");
+  if (hasRest) coreTypes.push("FlatInput", "SuccessResponse", "ErrorResponses");
+  if (anySubscription) coreTypes.push("MagiaSubscription");
   if (anyTq) coreTypes.push("MagiaTanStackQuery", "MagiaTanStackMutation");
   if (anyTq && anyInfinite) coreTypes.push("MagiaTanStackInfiniteQuery");
+  if (anyTq && anySubscription) coreTypes.push("MagiaTanStackSubscription");
   lines.push(`import type { ${coreTypes.join(", ")} } from 'magia-api'`);
   for (const [apiName, api] of Object.entries(apis)) {
     lines.push(`import type * as ${apiName}Types from '${api.typesImportPath}'`);
   }
   lines.push(``);
-
-  // Helper: extract input type from openapi-typescript operations interface
-  // Flattens path + query + header params + requestBody into a single type
-  const hasRest = Object.values(apis).some((a) => a.apiType === "rest");
-  if (hasRest) {
-    lines.push(`// Flatten openapi-typescript operation params into a single input type`);
-    lines.push(`type FlatInput<T> = T extends {`);
-    lines.push(`  parameters?: { path?: infer P; query?: infer Q; header?: infer H };`);
-    lines.push(`  requestBody?: { content: { [k: string]: infer B } };`);
-    lines.push(`}`);
-    lines.push(
-      `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {}) & (B extends object ? B : {})`,
-    );
-    lines.push(`  : T extends {`);
-    lines.push(`    parameters?: { path?: infer P; query?: infer Q; header?: infer H };`);
-    lines.push(`  }`);
-    lines.push(
-      `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {})`,
-    );
-    lines.push(`  : {}`);
-    lines.push(``);
-    lines.push(`// Extract success response type (first 2XX response with application/json)`);
-    lines.push(
-      `type SuccessResponse<T> = T extends { 200: { content: { "application/json": infer R } } } ? R`,
-    );
-    lines.push(`  : T extends { 201: { content: { "application/json": infer R } } } ? R`);
-    lines.push(`  : T extends { 204: { content: { "application/json": infer R } } } ? R`);
-    lines.push(`  : void`);
-    lines.push(``);
-    lines.push(`// Extract error response types as { status: ErrorType } map`);
-    lines.push(`type ErrorResponses<T> = {`);
-    lines.push(`  [K in keyof T as K extends \`4\${string}\` | \`5\${string}\` ? K : never]:`);
-    lines.push(`    T[K] extends { content: { "application/json": infer E } } ? E : unknown`);
-    lines.push(`}`);
-    lines.push(``);
-  }
 
   // ── Runtime: per-API manifests (tree-shakeable) ──
   const apiNames = Object.keys(apis);
@@ -111,6 +78,7 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
         lines.push(`      params: ${JSON.stringify(op.entry.params)},`);
         if (op.entry.multipart) lines.push(`      multipart: true,`);
         if (op.entry.sse) lines.push(`      sse: true,`);
+        if (op.entry.ws) lines.push(`      ws: true,`);
         if (op.entry.pagination)
           lines.push(`      pagination: ${JSON.stringify(op.entry.pagination)},`);
         lines.push(`    },`);
@@ -181,29 +149,29 @@ function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boo
   for (const op of api.operations) {
     const isMut = op.entry.method !== "GET";
     const opId = op.operationName;
+    // openapi-typescript keys operations by the raw operationId from the spec
+    const typeKey = op.rawOperationId ?? opId;
+    const hasOp = api.exportedTypes.has(typeKey);
 
-    // openapi-typescript uses the operationId as-is in the operations interface
-    // We need to find the matching key — check both raw and capitalized
-    const hasOp = api.exportedTypes.has(opId);
-
-    // Type references using openapi-typescript's operations interface
     let reqType: string;
     let resType: string;
     let errType: string;
 
     if (hasOp) {
-      reqType = `FlatInput<${ns}.operations[${JSON.stringify(opId)}]>`;
-      resType = `SuccessResponse<${ns}.operations[${JSON.stringify(opId)}]["responses"]>`;
-      errType = `ErrorResponses<${ns}.operations[${JSON.stringify(opId)}]["responses"]>`;
+      reqType = `FlatInput<${ns}.operations[${JSON.stringify(typeKey)}]>`;
+      resType = `SuccessResponse<${ns}.operations[${JSON.stringify(typeKey)}]["responses"]>`;
+      errType = `ErrorResponses<${ns}.operations[${JSON.stringify(typeKey)}]["responses"]>`;
     } else {
       reqType = "void";
       resType = "void";
       errType = "{}";
     }
 
-    // SSE endpoints get MagiaSSEOperation instead of the normal types
-    if (op.entry.sse) {
-      lines.push(`      ${opId}: MagiaSSEOperation<${reqType}, ${resType}>`);
+    // SSE/WS endpoints get MagiaSubscription
+    if (op.entry.sse || op.entry.ws) {
+      let line = `      ${opId}: MagiaSubscription<${reqType}, ${resType}>`;
+      if (tq) line += `\n        & MagiaTanStackSubscription<${reqType}, ${resType}>`;
+      lines.push(line);
       continue;
     }
 
@@ -251,9 +219,11 @@ function emitGraphQLTypes(lines: string[], api: GenGraphQLApiInfo, ns: string, t
       reqType = api.exportedTypes.has(subVarsTypeName) ? `${ns}.${subVarsTypeName}` : "void";
     }
 
-    // GraphQL subscriptions get MagiaSSEOperation
+    // GraphQL subscriptions get MagiaSubscription
     if (isSub) {
-      lines.push(`      ${op.operationName}: MagiaSSEOperation<${reqType}, ${resType}>`);
+      let line = `      ${op.operationName}: MagiaSubscription<${reqType}, ${resType}>`;
+      if (tq) line += `\n        & MagiaTanStackSubscription<${reqType}, ${resType}>`;
+      lines.push(line);
       continue;
     }
 

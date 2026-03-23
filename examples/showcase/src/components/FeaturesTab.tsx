@@ -10,6 +10,8 @@ export function FeaturesTab() {
       <ContextBagDemo />
       <QueryKeyDemo />
       <AbortDemo />
+      <SubscribeDemo />
+      <WSConfigDemo />
     </div>
   );
 }
@@ -57,6 +59,19 @@ function SafeFetchDemo() {
           {result}
         </ResultBanner>
       )}
+      <CodeBlock>{`// No try/catch needed — error is typed
+const { data, error } = await magia.pokeapi.getPokemon.safeFetch({
+  id: "pikachu",
+})
+
+if (error) {
+  // error: MagiaError — has .status, .code, .data
+  console.log(error.code)    // "404"
+  console.log(error.status)  // 404
+} else {
+  // data is fully typed from OpenAPI spec
+  console.log(data.height)   // 4
+}`}</CodeBlock>
     </Card>
   );
 }
@@ -87,6 +102,20 @@ function TransformErrorDemo() {
           {result}
         </ResultBanner>
       )}
+      <CodeBlock>{`// In createMagia config — runs before error reaches your code
+const magia = createMagia({
+  apis: {
+    pokeapi: {
+      baseUrl: "https://pokeapi.co",
+      transformError: (error) => {
+        if (error.status === 404) {
+          error.message = \`Pokemon not found: \${error.operation}\`
+        }
+        return error
+      },
+    },
+  },
+})`}</CodeBlock>
     </Card>
   );
 }
@@ -118,6 +147,17 @@ function ContextBagDemo() {
           {result}
         </ResultBanner>
       )}
+      <CodeBlock>{`// Pass metadata per-request — available in all interceptors
+await magia.pokeapi.getPokemon.fetch(
+  { id: "charizard" },
+  { context: { requestId: "abc-123", source: "features-tab" } }
+)
+
+// Access in interceptor config
+onRequest: (ctx) => {
+  ctx.headers["X-Request-ID"] = ctx.context.requestId
+  console.log(ctx.context.source) // "features-tab"
+}`}</CodeBlock>
     </Card>
   );
 }
@@ -179,6 +219,18 @@ function QueryKeyDemo() {
           </button>
         </div>
       )}
+      <CodeBlock>{`// Hierarchical keys — TanStack Query partial matching
+const key = magia.pokeapi.listPokemon.queryKey({ limit: 5 })
+// → ["magia", "pokeapi", "listPokemon", { limit: 5 }]
+
+const apiKey = magia.pokeapi.pathKey()
+// → ["magia", "pokeapi"]
+
+// Invalidate one operation
+queryClient.invalidateQueries({ queryKey: key })
+
+// Invalidate ALL queries for an API
+queryClient.invalidateQueries({ queryKey: apiKey })`}</CodeBlock>
     </Card>
   );
 }
@@ -216,6 +268,232 @@ function AbortDemo() {
           {result}
         </ResultBanner>
       )}
+      <CodeBlock>{`const controller = new AbortController()
+
+// Pass signal to any .fetch() or .safeFetch()
+const { error } = await magia.pokeapi.getPokemon.safeFetch(
+  { id: "slowpoke" },
+  { signal: controller.signal }
+)
+
+// Cancel from anywhere
+controller.abort()
+
+// Distinguish aborts from real errors
+if (error?.code === "ABORTED") {
+  // user cancelled — not a real error
+} else if (error?.code === "TIMEOUT") {
+  // request timed out (from timeout config)
+}`}</CodeBlock>
+    </Card>
+  );
+}
+
+// Feature: subscribe — AsyncIterable subscription pattern
+function SubscribeDemo() {
+  const [events, setEvents] = useState<string[]>([]);
+  const [active, setActive] = useState(false);
+  const [controller, setController] = useState<AbortController | null>(null);
+
+  function startSubscription() {
+    // Simulate what a real magia subscription looks like:
+    //
+    //   for await (const event of magia.myApi.onPriceUpdate.subscribe(
+    //     { symbol: "BTC" },
+    //     { reconnect: true }
+    //   )) {
+    //     console.log(event.price)
+    //   }
+    //
+    // This demo simulates events since PokeAPI/Rick&Morty don't have subscriptions.
+
+    const ctrl = new AbortController();
+    setController(ctrl);
+    setActive(true);
+    setEvents([]);
+
+    let count = 0;
+    const interval = setInterval(() => {
+      if (ctrl.signal.aborted) {
+        clearInterval(interval);
+        return;
+      }
+      count++;
+      const price = (42000 + Math.random() * 2000).toFixed(2);
+      setEvents((prev) => [...prev.slice(-7), `Event #${count}: BTC $${price}`]);
+    }, 800);
+
+    // Auto-stop after 15 events
+    setTimeout(() => {
+      if (!ctrl.signal.aborted) {
+        ctrl.abort();
+        clearInterval(interval);
+        setActive(false);
+        setEvents((prev) => [...prev, "— subscription completed"]);
+      }
+    }, 12000);
+  }
+
+  function stopSubscription() {
+    controller?.abort();
+    setActive(false);
+    setEvents((prev) => [...prev, "— aborted by user"]);
+  }
+
+  return (
+    <Card
+      title=".subscribe()"
+      description="Real-time subscriptions via WebSocket or SSE. Returns AsyncIterable — use for await...of. Cancel with AbortSignal."
+      feature="subscribe"
+    >
+      <div className="flex gap-2 items-center">
+        {!active ? (
+          <DemoButton onClick={startSubscription} label="Start Subscription" variant="green" />
+        ) : (
+          <DemoButton onClick={stopSubscription} label="Stop" variant="red" />
+        )}
+        {active && (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            live
+          </span>
+        )}
+      </div>
+      {events.length > 0 && (
+        <div className="mt-3 space-y-0.5">
+          {events.map((event, i) => (
+            <div
+              key={i}
+              className={`text-xs font-mono px-3 py-1 rounded ${
+                event.startsWith("—")
+                  ? "text-zinc-500 bg-zinc-900/50"
+                  : "text-emerald-300 bg-zinc-900"
+              }`}
+            >
+              {event}
+            </div>
+          ))}
+        </div>
+      )}
+      <CodeBlock>{`// WebSocket (graphql-transport-ws protocol)
+for await (const event of magia.crypto.onPriceUpdate.subscribe(
+  { symbol: "BTC" },
+  { reconnect: true }
+)) {
+  updateUI(event.price)
+}
+
+// Cancel with AbortSignal
+const ctrl = new AbortController()
+magia.crypto.onPriceUpdate.subscribe(
+  { symbol: "ETH" },
+  { signal: ctrl.signal }
+)
+ctrl.abort() // closes connection`}</CodeBlock>
+    </Card>
+  );
+}
+
+// Feature: WS config — wsUrl, connectionParams, lazy close
+function WSConfigDemo() {
+  const [activeExample, setActiveExample] = useState<"minimal" | "auth" | "rest">("minimal");
+
+  const examples = {
+    minimal: {
+      label: "Minimal (GraphQL)",
+      description: "Just add wsUrl — WS is used automatically for subscriptions",
+      code: `const magia = createMagia({
+  manifest,
+  apis: {
+    graphqlApi: {
+      baseUrl: "https://api.example.com/graphql",
+      wsUrl: "wss://api.example.com/graphql",
+    },
+  },
+})`,
+    },
+    auth: {
+      label: "With Auth (GraphQL)",
+      description: "connectionParams sent in ConnectionInit — supports async for token refresh",
+      code: `const magia = createMagia({
+  manifest,
+  apis: {
+    graphqlApi: {
+      baseUrl: "https://api.example.com/graphql",
+      wsUrl: "wss://ws.example.com/graphql",
+      ws: {
+        connectionParams: async () => ({
+          token: await getAccessToken(),
+        }),
+        closeTimeout: 5000,  // keep alive 5s after last unsub
+        retryAttempts: 10,
+      },
+    },
+  },
+})`,
+    },
+    rest: {
+      label: "REST WebSocket",
+      description: "wsUrl is the base — operation path is appended, like baseUrl for HTTP",
+      code: `const magia = createMagia({
+  manifest,
+  apis: {
+    streamApi: {
+      baseUrl: "https://api.example.com",
+      wsUrl: "wss://stream.example.com",
+      // Auth via URL params — no special config needed
+    },
+  },
+})
+
+// subscribes to wss://stream.example.com/ws/btcusdt
+for await (const tick of magia.streamApi.priceStream.subscribe(
+  { symbol: "btcusdt" }
+)) {
+  console.log(tick)
+}`,
+    },
+  };
+
+  const active = examples[activeExample];
+
+  return (
+    <Card
+      title="WS Configuration"
+      description="WebSocket support alongside SSE. Lazy connections, multiplexed GraphQL subscriptions, exponential backoff reconnection."
+      feature="wsUrl"
+    >
+      <div className="flex gap-1.5 mb-4">
+        {(Object.keys(examples) as (keyof typeof examples)[]).map((key) => (
+          <button
+            key={key}
+            onClick={() => setActiveExample(key)}
+            className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
+              activeExample === key
+                ? "bg-violet-500/20 text-violet-300"
+                : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            {examples[key].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-zinc-500 mb-3">{active.description}</p>
+      <CodeBlock>{active.code}</CodeBlock>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/50 p-3">
+          <div className="text-[10px] font-mono text-violet-400 mb-1">connection</div>
+          <div className="text-xs text-zinc-400">Lazy — connects on first .subscribe()</div>
+        </div>
+        <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/50 p-3">
+          <div className="text-[10px] font-mono text-violet-400 mb-1">multiplexing</div>
+          <div className="text-xs text-zinc-400">GraphQL: shared WS, multiplexed by ID</div>
+        </div>
+        <div className="rounded-lg bg-zinc-900/50 border border-zinc-800/50 p-3">
+          <div className="text-[10px] font-mono text-violet-400 mb-1">reconnect</div>
+          <div className="text-xs text-zinc-400">Exponential backoff + jitter, 5 retries</div>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -223,6 +501,16 @@ function AbortDemo() {
 // ---------------------------------------------------------------------------
 // Shared UI components
 // ---------------------------------------------------------------------------
+
+function CodeBlock({ children }: { children: string }) {
+  return (
+    <div className="mt-4 rounded-lg bg-zinc-900 border border-zinc-800 p-4">
+      <pre className="text-xs font-mono text-zinc-400 leading-relaxed whitespace-pre-wrap">
+        {children}
+      </pre>
+    </div>
+  );
+}
 
 function Card({
   title,

@@ -1,5 +1,5 @@
 import type { MagiaConfig, ManifestEntry } from "../types";
-import { dispatch } from "../proxy";
+import { dispatch, dispatchSubscribe } from "../proxy";
 
 /**
  * Compile-time plugin marker for defineConfig().
@@ -86,6 +86,26 @@ export function resolveTanStackQueryProp(
         pagination?.style === "page" ? 1 : pagination?.style === "offset" ? 0 : undefined,
       ...(opts?.getNextPageParam ? { getNextPageParam: opts.getNextPageParam } : {}),
     });
+  }
+
+  if (prop === "subscriptionOptions") {
+    return (input?: Record<string, unknown>, _opts?: { signal?: AbortSignal }) => ({
+      queryKey:
+        input != null
+          ? (["magia", apiName, operationName, input] as const)
+          : (["magia", apiName, operationName] as const),
+      queryFn: (ctx: { signal: AbortSignal }) =>
+        dispatchSubscribe(config, apiName, operationName, input, {
+          signal: ctx.signal,
+        }),
+    });
+  }
+
+  if (prop === "subscriptionKey") {
+    return (input?: Record<string, unknown>) =>
+      input != null
+        ? (["magia", apiName, operationName, input] as const)
+        : (["magia", apiName, operationName] as const);
   }
 
   return undefined;

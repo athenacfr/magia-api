@@ -1,4 +1,4 @@
-import { createMagia } from "magia-api";
+import { createMagia, MagiaError } from "magia-api";
 import { manifest } from "../magia.gen";
 
 // Feature: createMagia with full configuration
@@ -15,7 +15,14 @@ export const magia = createMagia({
       // Feature: transformError — customize errors before they reach your code
       transformError: (error) => {
         if (error.status === 404) {
-          error.message = `Pokemon not found: ${error.operation}`;
+          return new MagiaError(`Pokemon not found: ${error.operation}`, {
+            status: error.status,
+            code: error.code,
+            api: error.api,
+            operation: error.operation,
+            data: error.data,
+            response: error.response,
+          });
         }
         return error;
       },
