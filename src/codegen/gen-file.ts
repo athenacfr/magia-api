@@ -1,16 +1,24 @@
 import type { ExtractedOperation } from "./extractor";
+import type { GraphQLExtractedOperation } from "./graphql-codegen";
 import type { MagiaPlugin } from "../types";
 
-interface GenApiInfo {
-  operations: ExtractedOperation[];
+interface GenApiInfoBase {
   plugins: MagiaPlugin[];
   typesImportPath: string;
   exportedTypes: Set<string>;
 }
 
-function isMutation(method: string): boolean {
-  return method !== "GET";
+interface GenRestApiInfo extends GenApiInfoBase {
+  apiType: "rest";
+  operations: ExtractedOperation[];
 }
+
+interface GenGraphQLApiInfo extends GenApiInfoBase {
+  apiType: "graphql";
+  operations: GraphQLExtractedOperation[];
+}
+
+type GenApiInfo = GenRestApiInfo | GenGraphQLApiInfo;
 
 function hasTanStackQuery(plugins: MagiaPlugin[]): boolean {
   return plugins.some((p) => p.name === "tanstackQuery");
@@ -40,15 +48,18 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
   }
   lines.push(``);
 
-  // Helper: flatten Hey API's { path, query, headers, body } into flat params
-  lines.push(
-    `type FlatInput<T> = T extends { path?: infer P; query?: infer Q; headers?: infer H; body?: infer B }`,
-  );
-  lines.push(
-    `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {}) & (B extends object ? B : {})`,
-  );
-  lines.push(`  : T`);
-  lines.push(``);
+  // Helper: flatten Hey API's { path, query, headers, body } into flat params (REST only)
+  const hasRest = Object.values(apis).some((a) => a.apiType === "rest");
+  if (hasRest) {
+    lines.push(
+      `type FlatInput<T> = T extends { path?: infer P; query?: infer Q; headers?: infer H; body?: infer B }`,
+    );
+    lines.push(
+      `  ? (P extends object ? P : {}) & (Q extends object ? Q : {}) & (H extends object ? H : {}) & (B extends object ? B : {})`,
+    );
+    lines.push(`  : T`);
+    lines.push(``);
+  }
 
   // ── Runtime: manifest ──
   lines.push(`export const manifest: Manifest = {`);
@@ -59,13 +70,26 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
     lines.push(`    plugins: [${pluginsList}],`);
 
     lines.push(`    operations: {`);
-    for (const op of api.operations) {
-      lines.push(`      ${JSON.stringify(op.operationName)}: {`);
-      lines.push(`        method: ${JSON.stringify(op.entry.method)},`);
-      lines.push(`        path: ${JSON.stringify(op.entry.path)},`);
-      lines.push(`        params: ${JSON.stringify(op.entry.params)},`);
-      lines.push(`      },`);
+
+    if (api.apiType === "rest") {
+      for (const op of api.operations) {
+        lines.push(`      ${JSON.stringify(op.operationName)}: {`);
+        lines.push(`        type: "rest",`);
+        lines.push(`        method: ${JSON.stringify(op.entry.method)},`);
+        lines.push(`        path: ${JSON.stringify(op.entry.path)},`);
+        lines.push(`        params: ${JSON.stringify(op.entry.params)},`);
+        lines.push(`      },`);
+      }
+    } else {
+      for (const op of api.operations) {
+        lines.push(`      ${JSON.stringify(op.operationName)}: {`);
+        lines.push(`        type: "graphql",`);
+        lines.push(`        kind: ${JSON.stringify(op.kind)},`);
+        lines.push(`        document: ${JSON.stringify(op.document)},`);
+        lines.push(`      },`);
+      }
     }
+
     lines.push(`    },`);
     lines.push(`  },`);
   }
@@ -82,32 +106,10 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
     const tq = hasTanStackQuery(api.plugins);
     const ns = `${apiName}Types`;
 
-    for (const op of api.operations) {
-      const mutation = isMutation(op.entry.method);
-      const hasParams = Object.keys(op.entry.params).length > 0;
-      const capName = capitalize(op.operationName);
-
-      // Check if Hey API actually exported these types
-      const dataTypeName = `${capName}Data`;
-      const responseTypeName = `${capName}Response`;
-      const errorsTypeName = `${capName}Errors`;
-      const hasDataType = api.exportedTypes.has(dataTypeName);
-      const hasResponseType = api.exportedTypes.has(responseTypeName);
-      const hasErrorsType = api.exportedTypes.has(errorsTypeName);
-
-      const reqType = hasParams && hasDataType ? `FlatInput<${ns}.${dataTypeName}>` : "void";
-      const resType = hasResponseType ? `${ns}.${responseTypeName}` : "void";
-      const errType = hasErrorsType ? `${ns}.${errorsTypeName}` : "{}";
-
-      if (mutation) {
-        let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
-        if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
-        lines.push(line);
-      } else {
-        let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
-        if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
-        lines.push(line);
-      }
+    if (api.apiType === "rest") {
+      emitRestTypes(lines, api, ns, tq);
+    } else {
+      emitGraphQLTypes(lines, api, ns, tq);
     }
 
     lines.push(`      pathKey(): readonly ['magia', '${apiName}']`);
@@ -119,4 +121,74 @@ export function generateGenFile(apis: Record<string, GenApiInfo>): string {
   lines.push(``);
 
   return lines.join("\n");
+}
+
+function emitRestTypes(lines: string[], api: GenRestApiInfo, ns: string, tq: boolean): void {
+  for (const op of api.operations) {
+    const isMut = op.entry.method !== "GET";
+    const hasParams = Object.keys(op.entry.params).length > 0;
+    const capName = capitalize(op.operationName);
+
+    const dataTypeName = `${capName}Data`;
+    const responseTypeName = `${capName}Response`;
+    const errorsTypeName = `${capName}Errors`;
+    const hasDataType = api.exportedTypes.has(dataTypeName);
+    const hasResponseType = api.exportedTypes.has(responseTypeName);
+    const hasErrorsType = api.exportedTypes.has(errorsTypeName);
+
+    const reqType = hasParams && hasDataType ? `FlatInput<${ns}.${dataTypeName}>` : "void";
+    const resType = hasResponseType ? `${ns}.${responseTypeName}` : "void";
+    const errType = hasErrorsType ? `${ns}.${errorsTypeName}` : "{}";
+
+    if (isMut) {
+      let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}, ${errType}>`;
+      if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
+      lines.push(line);
+    } else {
+      let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}, ${errType}>`;
+      if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
+      lines.push(line);
+    }
+  }
+}
+
+function emitGraphQLTypes(lines: string[], api: GenGraphQLApiInfo, ns: string, tq: boolean): void {
+  for (const op of api.operations) {
+    const isMut = op.kind === "mutation";
+    const capName = capitalize(op.operationName);
+
+    // graphql-codegen generates: GetUserQuery, GetUserQueryVariables
+    const queryTypeName = `${capName}Query`;
+    const mutationTypeName = `${capName}Mutation`;
+    const subscriptionTypeName = `${capName}Subscription`;
+    const variablesTypeName = `${capName}QueryVariables`;
+    const mutVarsTypeName = `${capName}MutationVariables`;
+    const subVarsTypeName = `${capName}SubscriptionVariables`;
+
+    let resType: string;
+    let reqType: string;
+
+    if (op.kind === "query") {
+      resType = api.exportedTypes.has(queryTypeName) ? `${ns}.${queryTypeName}` : "unknown";
+      reqType = api.exportedTypes.has(variablesTypeName) ? `${ns}.${variablesTypeName}` : "void";
+    } else if (op.kind === "mutation") {
+      resType = api.exportedTypes.has(mutationTypeName) ? `${ns}.${mutationTypeName}` : "unknown";
+      reqType = api.exportedTypes.has(mutVarsTypeName) ? `${ns}.${mutVarsTypeName}` : "void";
+    } else {
+      resType = api.exportedTypes.has(subscriptionTypeName)
+        ? `${ns}.${subscriptionTypeName}`
+        : "unknown";
+      reqType = api.exportedTypes.has(subVarsTypeName) ? `${ns}.${subVarsTypeName}` : "void";
+    }
+
+    if (isMut) {
+      let line = `      ${op.operationName}: MagiaMutation<${reqType}, ${resType}>`;
+      if (tq) line += `\n        & MagiaTanStackMutation<${reqType}, ${resType}>`;
+      lines.push(line);
+    } else {
+      let line = `      ${op.operationName}: MagiaOperation<${reqType}, ${resType}>`;
+      if (tq) line += `\n        & MagiaTanStackQuery<${reqType}, ${resType}>`;
+      lines.push(line);
+    }
+  }
 }

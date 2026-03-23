@@ -1,14 +1,21 @@
-import type { Manifest, ManifestEntry, MagiaConfig, MagiaFetchOptions } from "./types";
+import type {
+  Manifest,
+  ManifestEntry,
+  RestManifestEntry,
+  GraphQLManifestEntry,
+  MagiaConfig,
+  MagiaFetchOptions,
+} from "./types";
 import { MagiaError } from "./error";
 import { resolveTanStackQueryProp } from "./plugins/tanstack-query";
 
 // ---------------------------------------------------------------------------
-// URL construction
+// URL construction (REST)
 // ---------------------------------------------------------------------------
 
 function buildUrl(
   baseUrl: string,
-  entry: ManifestEntry,
+  entry: RestManifestEntry,
   flatInput: Record<string, unknown>,
   extraQuery?: Record<string, unknown>,
 ): string {
@@ -39,11 +46,11 @@ function buildUrl(
 }
 
 // ---------------------------------------------------------------------------
-// Body extraction
+// Body extraction (REST)
 // ---------------------------------------------------------------------------
 
 function extractBody(
-  entry: ManifestEntry,
+  entry: RestManifestEntry,
   flatInput: Record<string, unknown>,
 ): unknown | undefined {
   const bodyKeys = Object.entries(entry.params)
@@ -77,11 +84,11 @@ function extractBody(
 }
 
 // ---------------------------------------------------------------------------
-// Header extraction from flat input
+// Header extraction from flat input (REST)
 // ---------------------------------------------------------------------------
 
 function extractHeaders(
-  entry: ManifestEntry,
+  entry: RestManifestEntry,
   flatInput: Record<string, unknown>,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -107,26 +114,18 @@ async function resolveHeaders(
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch fetch
+// REST dispatch
 // ---------------------------------------------------------------------------
 
-async function dispatch(
+async function dispatchRest(
   config: MagiaConfig,
   apiName: string,
   operationName: string,
-  manifest: Manifest,
-  input: Record<string, unknown> = {},
-  opts: MagiaFetchOptions = {},
+  entry: RestManifestEntry,
+  apiConfig: MagiaConfig["apis"][string],
+  input: Record<string, unknown>,
+  opts: MagiaFetchOptions,
 ): Promise<unknown> {
-  const apiManifest = manifest[apiName];
-  if (!apiManifest) throw new Error(`Unknown API: ${apiName}`);
-
-  const entry = apiManifest.operations[operationName];
-  if (!entry) throw new Error(`Unknown operation: ${apiName}.${operationName}`);
-
-  const apiConfig = config.apis[apiName];
-  if (!apiConfig) throw new Error(`No config for API: ${apiName}`);
-
   const url = buildUrl(apiConfig.baseUrl, entry, input, opts.query);
   const body = extractBody(entry, input);
   const configHeaders = await resolveHeaders(apiConfig);
@@ -189,6 +188,130 @@ async function dispatch(
   }
 
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL dispatch
+// ---------------------------------------------------------------------------
+
+async function dispatchGraphQL(
+  config: MagiaConfig,
+  apiName: string,
+  operationName: string,
+  entry: GraphQLManifestEntry,
+  apiConfig: MagiaConfig["apis"][string],
+  input: Record<string, unknown>,
+  opts: MagiaFetchOptions,
+): Promise<unknown> {
+  const url = apiConfig.baseUrl;
+  const configHeaders = await resolveHeaders(apiConfig);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...configHeaders,
+        ...opts.headers,
+      },
+      body: JSON.stringify({
+        query: entry.document,
+        variables: Object.keys(input).length > 0 ? input : undefined,
+      }),
+      signal: opts.signal,
+    });
+  } catch (fetchErr) {
+    const isAbort = fetchErr instanceof DOMException && fetchErr.name === "AbortError";
+    const error = new MagiaError(
+      isAbort
+        ? `GraphQL ${operationName} was aborted`
+        : `GraphQL ${operationName} network error: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+      {
+        status: 0,
+        code: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
+        api: apiName,
+        operation: operationName,
+        data: undefined,
+      },
+    );
+    config.onError?.(error);
+    throw error;
+  }
+
+  if (!response.ok) {
+    let errorData: unknown;
+    try {
+      errorData = await response.json();
+    } catch {
+      errorData = undefined;
+    }
+    const error = new MagiaError(`GraphQL ${operationName} failed with ${response.status}`, {
+      status: response.status,
+      code: String(response.status),
+      api: apiName,
+      operation: operationName,
+      data: errorData,
+      response,
+    });
+    config.onError?.(error);
+    throw error;
+  }
+
+  const json = (await response.json()) as { data?: unknown; errors?: unknown[] };
+
+  // GraphQL errors in response body
+  if (json.errors && Array.isArray(json.errors) && json.errors.length > 0) {
+    const firstErr = json.errors[0] as Record<string, unknown>;
+    const extensions = (firstErr.extensions ?? {}) as Record<string, unknown>;
+    const error = new MagiaError(
+      (firstErr.message as string) ?? `GraphQL ${operationName} returned errors`,
+      {
+        status: (extensions.status as number) ?? 200,
+        code: (extensions.code as string) ?? "GRAPHQL_ERROR",
+        api: apiName,
+        operation: operationName,
+        data: json.errors,
+        response,
+      },
+    );
+    config.onError?.(error);
+    throw error;
+  }
+
+  if (opts.raw) {
+    return { data: json.data, headers: response.headers, status: response.status };
+  }
+
+  return json.data;
+}
+
+// ---------------------------------------------------------------------------
+// Unified dispatch
+// ---------------------------------------------------------------------------
+
+async function dispatch(
+  config: MagiaConfig,
+  apiName: string,
+  operationName: string,
+  manifest: Manifest,
+  input: Record<string, unknown> = {},
+  opts: MagiaFetchOptions = {},
+): Promise<unknown> {
+  const apiManifest = manifest[apiName];
+  if (!apiManifest) throw new Error(`Unknown API: ${apiName}`);
+
+  const entry = apiManifest.operations[operationName];
+  if (!entry) throw new Error(`Unknown operation: ${apiName}.${operationName}`);
+
+  const apiConfig = config.apis[apiName];
+  if (!apiConfig) throw new Error(`No config for API: ${apiName}`);
+
+  if (entry.type === "graphql") {
+    return dispatchGraphQL(config, apiName, operationName, entry, apiConfig, input, opts);
+  }
+
+  return dispatchRest(config, apiName, operationName, entry, apiConfig, input, opts);
 }
 
 // ---------------------------------------------------------------------------

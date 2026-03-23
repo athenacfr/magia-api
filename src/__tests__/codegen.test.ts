@@ -172,6 +172,7 @@ describe("generateGenFile", () => {
     const ops = extractOperations(spec);
     const source = generateGenFile({
       petstore: {
+        apiType: "rest",
         operations: ops,
         plugins: [{ name: "tanstackQuery" }],
         typesImportPath: "../node_modules/.magia/internals/petstore",
@@ -213,6 +214,7 @@ describe("generateGenFile", () => {
 
     const source = generateGenFile({
       petstore: {
+        apiType: "rest",
         operations: ops,
         plugins: [],
         typesImportPath: "../node_modules/.magia/internals/petstore",
@@ -231,6 +233,7 @@ describe("generateGenFile", () => {
     // No *Errors in exported types
     const source = generateGenFile({
       petstore: {
+        apiType: "rest",
         operations: ops,
         plugins: [],
         typesImportPath: "../node_modules/.magia/internals/petstore",
@@ -249,6 +252,7 @@ describe("generateGenFile", () => {
     const ops = extractOperations(spec);
     const source = generateGenFile({
       petstore: {
+        apiType: "rest",
         operations: ops,
         plugins: [],
         typesImportPath: "../node_modules/.magia/internals/petstore",
@@ -319,15 +323,14 @@ describe("generate (full pipeline)", () => {
     expect(result.apis.petstore.operations).toBe(5);
   }, 30000);
 
-  it("reports error for GraphQL API in v1", async () => {
+  it("reports error for unknown API type", async () => {
     const result = await generate({
       config: {
         output: "./src/magia.gen.ts",
         apis: {
-          github: {
-            type: "graphql" as any,
-            schema: "./schema.graphql",
-            documents: "./src/**/*.graphql",
+          test: {
+            type: "grpc" as any,
+            schema: "./spec.proto",
           },
         },
       },
@@ -335,7 +338,7 @@ describe("generate (full pipeline)", () => {
     });
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].apiName).toBe("github");
-    expect(result.errors[0].error.message).toContain("not supported in v1");
+    expect(result.errors[0].apiName).toBe("test");
+    expect(result.errors[0].error.message).toContain("Unknown API type");
   });
 }, 60000);

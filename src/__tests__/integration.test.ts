@@ -9,16 +9,19 @@ const manifest: Manifest = {
     plugins: [tanstackQuery()],
     operations: {
       getPetById: {
+        type: "rest",
         method: "GET",
         path: "/pet/{petId}",
         params: { petId: "path" },
       },
       listPets: {
+        type: "rest",
         method: "GET",
         path: "/pet/findByStatus",
         params: { status: "query" },
       },
       createPet: {
+        type: "rest",
         method: "POST",
         path: "/pet",
         params: { body: "body" },

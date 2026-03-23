@@ -1,12 +1,12 @@
 import type { OpenApiSpec, OpenApiOperation, OpenApiParameter, OpenApiPathItem } from "./parser";
-import type { ManifestEntry, ParamLocation } from "../types";
+import type { RestManifestEntry, ParamLocation } from "../types";
 
 const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
 type HttpMethod = (typeof HTTP_METHODS)[number];
 
 export interface ExtractedOperation {
   operationName: string;
-  entry: ManifestEntry;
+  entry: RestManifestEntry;
 }
 
 export interface ExtractOptions {
@@ -90,7 +90,8 @@ export function extractOperations(
       operations.push({
         operationName,
         entry: {
-          method: method.toUpperCase() as ManifestEntry["method"],
+          type: "rest",
+          method: method.toUpperCase() as RestManifestEntry["method"],
           path,
           params: extractParams(pathParams, operation),
         },

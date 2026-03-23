@@ -1,11 +1,12 @@
 import { resolve, relative, dirname } from "node:path";
 import { mkdir, writeFile, rename, readFile } from "node:fs/promises";
 
-import type { DefineConfigInput, MagiaPlugin } from "../types";
+import type { DefineConfigInput, MagiaPlugin, GraphQLApiDefConfig } from "../types";
 import { resolveSchema } from "../schema";
 import { parseSpec } from "./parser";
 import { extractOperations, type ExtractedOperation } from "./extractor";
 import { generateTypes, writeSpecFile } from "./hey-api";
+import { generateGraphQLTypes, type GraphQLExtractedOperation } from "./graphql-codegen";
 import { generateGenFile } from "./gen-file";
 
 export interface GenerateOptions {
@@ -36,6 +37,137 @@ async function atomicWrite(filePath: string, content: string): Promise<void> {
   await rename(tmpPath, filePath);
 }
 
+// ---------------------------------------------------------------------------
+// Gen API info types (union for REST and GraphQL)
+// ---------------------------------------------------------------------------
+
+type GenApiInfo =
+  | {
+      apiType: "rest";
+      operations: ExtractedOperation[];
+      plugins: MagiaPlugin[];
+      typesImportPath: string;
+      exportedTypes: Set<string>;
+    }
+  | {
+      apiType: "graphql";
+      operations: GraphQLExtractedOperation[];
+      plugins: MagiaPlugin[];
+      typesImportPath: string;
+      exportedTypes: Set<string>;
+    };
+
+// ---------------------------------------------------------------------------
+// REST pipeline
+// ---------------------------------------------------------------------------
+
+async function generateRestApi(
+  apiName: string,
+  apiConfig: { schema: any; plugins?: MagiaPlugin[]; operationName?: any },
+  cwd: string,
+  outputDir: string,
+  genFilePath: string,
+): Promise<{ genApi: GenApiInfo; operationCount: number; typesDir: string }> {
+  // 1. Resolve schema
+  const specText = await resolveSchema({
+    apiName,
+    source: apiConfig.schema,
+    cwd,
+  });
+
+  // 2. Parse spec
+  const spec = parseSpec(specText);
+
+  // 3. Extract operations
+  const operations = extractOperations(spec, {
+    operationName: apiConfig.operationName,
+  });
+
+  // 4. Write spec file for Hey API
+  const specPath = await writeSpecFile(outputDir, apiName, specText);
+
+  // 5. Generate types via Hey API
+  let typesDir: string;
+  try {
+    typesDir = await generateTypes({
+      apiName,
+      specPath,
+      outputDir,
+    });
+  } catch (heyApiErr) {
+    const msg = heyApiErr instanceof Error ? heyApiErr.message : String(heyApiErr);
+    const isCircularRef = /circular|\$ref.*loop|recursive/i.test(msg);
+    throw new Error(
+      isCircularRef
+        ? `API "${apiName}" has circular $ref in schema. ` +
+            `Hey API cannot resolve circular references. ` +
+            `Consider simplifying the schema or breaking the cycle.`
+        : `Hey API type generation failed for "${apiName}": ${msg}`,
+      { cause: heyApiErr },
+    );
+  }
+
+  // 6. Scan Hey API output for available type names
+  const indexContent = await readFile(resolve(typesDir, "index.ts"), "utf-8");
+  const exportedTypes = new Set(
+    [...indexContent.matchAll(/\b(\w+(?:Data|Response|Errors))\b/g)].map((m) => m[1]),
+  );
+
+  // 7. Collect for gen file
+  const plugins = apiConfig.plugins ?? [];
+  const typesRelative = relative(dirname(genFilePath), typesDir).replace(/\\/g, "/");
+  const typesImportPath = typesRelative.startsWith(".") ? typesRelative : `./${typesRelative}`;
+
+  return {
+    genApi: { apiType: "rest", operations, plugins, typesImportPath, exportedTypes },
+    operationCount: operations.length,
+    typesDir,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL pipeline
+// ---------------------------------------------------------------------------
+
+async function generateGraphQLApi(
+  apiName: string,
+  apiConfig: GraphQLApiDefConfig,
+  cwd: string,
+  outputDir: string,
+  genFilePath: string,
+): Promise<{ genApi: GenApiInfo; operationCount: number; typesDir: string }> {
+  // 1. Resolve schema
+  const schemaText = await resolveSchema({
+    apiName,
+    source: apiConfig.schema,
+    cwd,
+  });
+
+  // 2. Generate types via graphql-codegen + extract operations
+  const { typesDir, operations, exportedTypes } = await generateGraphQLTypes({
+    apiName,
+    schemaText,
+    documentGlobs: apiConfig.documents,
+    outputDir,
+    cwd,
+  });
+
+  // 3. Collect for gen file
+  const plugins = apiConfig.plugins ?? [];
+  const typesRelative = relative(dirname(genFilePath), typesDir).replace(/\\/g, "/");
+  const typesImportPath = typesRelative.startsWith(".") ? typesRelative : `./${typesRelative}`;
+
+  return {
+    genApi: { apiType: "graphql", operations, plugins, typesImportPath, exportedTypes },
+    operationCount: operations.length,
+    typesDir,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Main generate function
+// ---------------------------------------------------------------------------
+
 /**
  * Run the full codegen pipeline for all APIs in the config.
  */
@@ -46,15 +178,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
 
   const genFilePath = resolveGenFilePath(cwd, opts.config);
   const apiNames = opts.filter ?? Object.keys(opts.config.apis);
-  const genApis: Record<
-    string,
-    {
-      operations: ExtractedOperation[];
-      plugins: MagiaPlugin[];
-      typesImportPath: string;
-      exportedTypes: Set<string>;
-    }
-  > = {};
+  const genApis: Record<string, GenApiInfo> = {};
   const result: GenerateResult = {
     genFilePath: "",
     apis: {},
@@ -68,70 +192,33 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
       continue;
     }
 
-    // v1: REST only
-    if (apiConfig.type !== "rest") {
-      result.errors.push({
-        apiName,
-        error: new Error(
-          `API type "${apiConfig.type}" not supported in v1. Only "rest" is supported.`,
-        ),
-      });
-      continue;
-    }
-
     try {
-      // 1. Resolve schema
-      const specText = await resolveSchema({
-        apiName,
-        source: apiConfig.schema,
-        cwd,
-      });
-
-      // 2. Parse spec
-      const spec = parseSpec(specText);
-
-      // 3. Extract operations
-      const operations = extractOperations(spec, {
-        operationName: apiConfig.operationName,
-      });
-
-      // 4. Write spec file for Hey API
-      const specPath = await writeSpecFile(outputDir, apiName, specText);
-
-      // 5. Generate types via Hey API
-      let typesDir: string;
-      try {
-        typesDir = await generateTypes({
+      if (apiConfig.type === "rest") {
+        const { genApi, operationCount, typesDir } = await generateRestApi(
           apiName,
-          specPath,
+          apiConfig,
+          cwd,
           outputDir,
-        });
-      } catch (heyApiErr) {
-        const msg = heyApiErr instanceof Error ? heyApiErr.message : String(heyApiErr);
-        const isCircularRef = /circular|\$ref.*loop|recursive/i.test(msg);
-        throw new Error(
-          isCircularRef
-            ? `API "${apiName}" has circular $ref in schema. ` +
-                `Hey API cannot resolve circular references. ` +
-                `Consider simplifying the schema or breaking the cycle.`
-            : `Hey API type generation failed for "${apiName}": ${msg}`,
-          { cause: heyApiErr },
+          genFilePath,
         );
+        genApis[apiName] = genApi;
+        result.apis[apiName] = { operations: operationCount, typesDir };
+      } else if (apiConfig.type === "graphql") {
+        const { genApi, operationCount, typesDir } = await generateGraphQLApi(
+          apiName,
+          apiConfig,
+          cwd,
+          outputDir,
+          genFilePath,
+        );
+        genApis[apiName] = genApi;
+        result.apis[apiName] = { operations: operationCount, typesDir };
+      } else {
+        result.errors.push({
+          apiName,
+          error: new Error(`Unknown API type: "${(apiConfig as any).type}"`),
+        });
       }
-
-      // 6. Scan Hey API output for available type names
-      const indexContent = await readFile(resolve(typesDir, "index.ts"), "utf-8");
-      const exportedTypes = new Set(
-        [...indexContent.matchAll(/\b(\w+(?:Data|Response|Errors))\b/g)].map((m) => m[1]),
-      );
-
-      // 7. Collect for gen file
-      const plugins = apiConfig.plugins ?? [];
-      const typesRelative = relative(dirname(genFilePath), typesDir).replace(/\\/g, "/");
-      const typesImportPath = typesRelative.startsWith(".") ? typesRelative : `./${typesRelative}`;
-
-      genApis[apiName] = { operations, plugins, typesImportPath, exportedTypes };
-      result.apis[apiName] = { operations: operations.length, typesDir };
     } catch (err) {
       result.errors.push({
         apiName,
@@ -140,7 +227,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
     }
   }
 
-  // 7. Generate magia.gen.ts (manifest + type augmentation)
+  // Generate magia.gen.ts (manifest + type augmentation)
   if (Object.keys(genApis).length > 0) {
     const source = generateGenFile(genApis);
     await atomicWrite(genFilePath, source);

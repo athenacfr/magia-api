@@ -8,21 +8,25 @@ const manifest: Manifest = {
     plugins: [],
     operations: {
       getPetById: {
+        type: "rest",
         method: "GET",
         path: "/pet/{petId}",
         params: { petId: "path" },
       },
       listPets: {
+        type: "rest",
         method: "GET",
         path: "/pet/findByStatus",
         params: { status: "query" },
       },
       createPet: {
+        type: "rest",
         method: "POST",
         path: "/pet",
         params: { body: "body" },
       },
       deletePet: {
+        type: "rest",
         method: "DELETE",
         path: "/pet/{petId}",
         params: { petId: "path" },
@@ -218,6 +222,7 @@ describe("createMagia Proxy", () => {
         plugins: [],
         operations: {
           listPets: {
+            type: "rest",
             method: "GET",
             path: "/pets",
             params: { "X-Api-Key": "header", status: "query" },

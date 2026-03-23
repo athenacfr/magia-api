@@ -4,11 +4,20 @@
 
 export type ParamLocation = "path" | "query" | "body" | "header";
 
-export interface ManifestEntry {
+export interface RestManifestEntry {
+  type: "rest";
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   path: string; // e.g. "/pet/{petId}"
   params: Record<string, ParamLocation>;
 }
+
+export interface GraphQLManifestEntry {
+  type: "graphql";
+  kind: "query" | "mutation" | "subscription";
+  document: string; // compiled GraphQL document string
+}
+
+export type ManifestEntry = RestManifestEntry | GraphQLManifestEntry;
 
 export interface MagiaPlugin {
   name: string;

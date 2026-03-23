@@ -151,11 +151,13 @@ const manifest: Manifest = {
     plugins: [],
     operations: {
       getPetById: {
+        type: "rest",
         method: "GET",
         path: "/pet/{petId}",
         params: { petId: "path" },
       },
       createPet: {
+        type: "rest",
         method: "POST",
         path: "/pet",
         params: { body: "body" },
