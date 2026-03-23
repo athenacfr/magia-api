@@ -5,37 +5,11 @@ Zero-ceremony typed API client generation for Vite.
 Define your APIs once. Get fully typed `fetch()`, TanStack Query options, and cache keys — all from a single config file. No codegen scripts, no manual types, no boilerplate.
 
 ```typescript
-// magia.config.ts
-import { defineConfig, tanstackQuery } from "magia-api";
-
-export default defineConfig({
-  output: "src/magia.gen.ts",
-  apis: {
-    petstore: {
-      type: "rest",
-      schema: "https://petstore3.swagger.io/api/v3/openapi.json",
-      plugins: [tanstackQuery()],
-    },
-  },
-});
-```
-
-```typescript
-// src/lib/magia.ts
-import { createMagia } from "magia-api";
-import { manifest } from "./magia.gen";
-
-export const magia = createMagia({
-  manifest,
-  apis: {
-    petstore: { baseUrl: "https://petstore3.swagger.io/api/v3" },
-  },
-});
-```
-
-```typescript
 // Fully typed — zero manual types
 const pet = await magia.petstore.getPetById.fetch({ petId: 1 });
+
+// Safe fetch — no try/catch needed
+const { data, error } = await magia.petstore.getPetById.safeFetch({ petId: 1 });
 
 // TanStack Query — standard API, no wrappers
 const { data } = useQuery(magia.petstore.getPetById.queryOptions({ petId: 1 }));
