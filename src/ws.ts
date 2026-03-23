@@ -23,7 +23,10 @@ export interface WSErrorContext {
   operation: string;
 }
 
-export function wrapWSCloseEvent(event: CloseEvent, ctx: WSErrorContext): MagiaError {
+export function wrapWSCloseEvent(
+  event: { code: number; reason: string },
+  ctx: WSErrorContext,
+): MagiaError {
   return new MagiaError(`WebSocket closed: ${event.reason || event.code}`, {
     status: event.code,
     code: `WS_CLOSE_${event.code}`,

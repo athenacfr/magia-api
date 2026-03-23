@@ -210,7 +210,7 @@ export class GraphQLWSClient {
           this.connecting = false;
           // If unexpected close, propagate to active subs
           if (code !== 1000) {
-            const err = wrapWSCloseEvent(new CloseEvent("close", { code, reason }), errorCtx);
+            const err = wrapWSCloseEvent({ code, reason }, errorCtx);
             this.config.onSubscriptionError?.(err);
           }
         },

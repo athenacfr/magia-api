@@ -7,7 +7,7 @@ import { WSConnection } from "../ws";
 
 type WSListener = {
   onopen: ((ev: Event) => void) | null;
-  onclose: ((ev: CloseEvent) => void) | null;
+  onclose: ((ev: { code: number; reason: string }) => void) | null;
   onmessage: ((ev: MessageEvent) => void) | null;
   onerror: ((ev: Event) => void) | null;
 };
@@ -17,7 +17,7 @@ function createMockWebSocket() {
 
   class MockWS {
     onopen: ((ev: Event) => void) | null = null;
-    onclose: ((ev: CloseEvent) => void) | null = null;
+    onclose: ((ev: { code: number; reason: string }) => void) | null = null;
     onmessage: ((ev: MessageEvent) => void) | null = null;
     onerror: ((ev: Event) => void) | null = null;
     sent: string[] = [];
@@ -50,7 +50,7 @@ function createMockWebSocket() {
 
     simulateClose(code = 1000, reason = "") {
       this.readyState = 3;
-      this.onclose?.(new CloseEvent("close", { code, reason }));
+      this.onclose?.({ code, reason });
     }
 
     simulateError() {

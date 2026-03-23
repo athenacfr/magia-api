@@ -10,7 +10,7 @@ function createMockWebSocket() {
 
   class MockWS {
     onopen: ((ev: Event) => void) | null = null;
-    onclose: ((ev: CloseEvent) => void) | null = null;
+    onclose: ((ev: { code: number; reason: string }) => void) | null = null;
     onmessage: ((ev: MessageEvent) => void) | null = null;
     onerror: ((ev: Event) => void) | null = null;
     sent: unknown[] = [];
@@ -44,7 +44,7 @@ function createMockWebSocket() {
 
     simulateClose(code = 1000, reason = "") {
       this.readyState = 3;
-      this.onclose?.(new CloseEvent("close", { code, reason }));
+      this.onclose?.({ code, reason });
     }
   }
 
