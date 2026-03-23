@@ -250,4 +250,24 @@ describe("createMagia Proxy", () => {
       "Cannot call magia.petstore.getPetById.queryOptions directly",
     );
   });
+
+  it("shorthands() returns per-API proxies", async () => {
+    const fetch = mockFetch({ id: 1, name: "Rex" });
+    globalThis.fetch = fetch;
+
+    const magia = createMagia({ ...config, manifest }) as any;
+    const { petstore } = magia.shorthands();
+
+    const result = await petstore.getPetById.fetch({ petId: 1 });
+    expect(result).toEqual({ id: 1, name: "Rex" });
+
+    const [url] = fetch.mock.calls[0];
+    expect(url).toBe("https://petstore.example.com/pet/1");
+  });
+
+  it("shorthands() pathKey works on destructured API", () => {
+    const magia = createMagia({ ...config, manifest }) as any;
+    const { petstore } = magia.shorthands();
+    expect(petstore.pathKey()).toEqual(["magia", "petstore"]);
+  });
 });

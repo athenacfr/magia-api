@@ -151,8 +151,10 @@ export interface DefineConfigInput {
 // Client interface (empty — augmented by generated .d.ts)
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface MagiaClient {}
+export interface MagiaClient {
+  /** Destructure API proxies for cleaner imports */
+  shorthands(): { [K in keyof this]: this[K] };
+}
 
 // ---------------------------------------------------------------------------
 // createMagia config

@@ -321,6 +321,17 @@ function createProxy(config: MagiaConfig, path: string[]): unknown {
     get(_target, prop: string) {
       if (prop === "then") return undefined; // not a thenable
 
+      // .shorthands() on root level — destructure API proxies
+      if (prop === "shorthands" && path.length === 0) {
+        return () => {
+          const result: Record<string, unknown> = {};
+          for (const apiName of Object.keys(config.manifest)) {
+            result[apiName] = createProxy(config, [apiName]);
+          }
+          return result;
+        };
+      }
+
       // .fetch() on operation level (path = [apiName, operationName])
       if (prop === "fetch" && path.length === 2) {
         return (input?: Record<string, unknown>, opts?: MagiaFetchOptions) =>
