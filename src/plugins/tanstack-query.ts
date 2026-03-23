@@ -1,5 +1,5 @@
-import type { Manifest, MagiaConfig } from '../types'
-import { dispatch } from '../proxy'
+import type { Manifest, MagiaConfig } from "../types";
+import { dispatch } from "../proxy";
 
 /**
  * Compile-time plugin marker for defineConfig().
@@ -7,7 +7,7 @@ import { dispatch } from '../proxy'
  * in the manifest with plugins: ['tanstackQuery'].
  */
 export function tanstackQuery() {
-  return { name: 'tanstackQuery' as const }
+  return { name: "tanstackQuery" as const };
 }
 
 // ---------------------------------------------------------------------------
@@ -20,44 +20,45 @@ export function resolveTanStackQueryProp(
   config: MagiaConfig,
   manifest: Manifest,
 ): unknown | undefined {
-  if (path.length !== 2) return undefined
+  if (path.length !== 2) return undefined;
 
-  const [apiName, operationName] = path
+  const [apiName, operationName] = path;
 
-  if (prop === 'queryOptions') {
+  if (prop === "queryOptions") {
     return (input?: Record<string, unknown>) => ({
-      queryKey: input != null
-        ? (['magia', apiName, operationName, input] as const)
-        : (['magia', apiName, operationName] as const),
+      queryKey:
+        input != null
+          ? (["magia", apiName, operationName, input] as const)
+          : (["magia", apiName, operationName] as const),
       queryFn: (ctx: { signal: AbortSignal }) =>
         dispatch(config, apiName, operationName, manifest, input, {
           signal: ctx.signal,
         }),
-    })
+    });
   }
 
-  if (prop === 'queryKey') {
+  if (prop === "queryKey") {
     return (input?: Record<string, unknown>) =>
       input != null
-        ? (['magia', apiName, operationName, input] as const)
-        : (['magia', apiName, operationName] as const)
+        ? (["magia", apiName, operationName, input] as const)
+        : (["magia", apiName, operationName] as const);
   }
 
-  if (prop === 'mutationOptions') {
+  if (prop === "mutationOptions") {
     return (opts?: {
-      onSuccess?: (data: unknown, variables: unknown) => void
-      onError?: (error: Error, variables: unknown) => void
+      onSuccess?: (data: unknown, variables: unknown) => void;
+      onError?: (error: Error, variables: unknown) => void;
     }) => ({
       mutationFn: (input: Record<string, unknown>) =>
         dispatch(config, apiName, operationName, manifest, input),
-      mutationKey: ['magia', apiName, operationName] as const,
+      mutationKey: ["magia", apiName, operationName] as const,
       ...opts,
-    })
+    });
   }
 
-  if (prop === 'mutationKey') {
-    return () => ['magia', apiName, operationName] as const
+  if (prop === "mutationKey") {
+    return () => ["magia", apiName, operationName] as const;
   }
 
-  return undefined
+  return undefined;
 }

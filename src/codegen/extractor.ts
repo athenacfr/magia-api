@@ -1,17 +1,17 @@
-import type { OpenApiSpec, OpenApiOperation, OpenApiParameter, OpenApiPathItem } from './parser'
-import type { ManifestEntry, ParamLocation } from '../types'
+import type { OpenApiSpec, OpenApiOperation, OpenApiParameter, OpenApiPathItem } from "./parser";
+import type { ManifestEntry, ParamLocation } from "../types";
 
-const HTTP_METHODS = ['get', 'post', 'put', 'delete', 'patch'] as const
-type HttpMethod = (typeof HTTP_METHODS)[number]
+const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
+type HttpMethod = (typeof HTTP_METHODS)[number];
 
 export interface ExtractedOperation {
-  operationName: string
-  entry: ManifestEntry
+  operationName: string;
+  entry: ManifestEntry;
 }
 
 export interface ExtractOptions {
   /** Custom operation naming function */
-  operationName?: (method: string, path: string, operationId?: string) => string
+  operationName?: (method: string, path: string, operationId?: string) => string;
 }
 
 /**
@@ -19,21 +19,21 @@ export interface ExtractOptions {
  * e.g. GET /pet/{petId} → getPetPetId
  */
 function defaultOperationName(method: string, path: string, operationId?: string): string {
-  if (operationId) return operationId
+  if (operationId) return operationId;
 
   // Fallback: GET /pet/{petId} → get_pet_petId → getPetPetId
   const slug = path
-    .replace(/\{(\w+)\}/g, '$1')   // {petId} → petId
-    .replace(/[^a-zA-Z0-9]/g, '_') // non-alphanum → _
-    .replace(/_+/g, '_')           // collapse
-    .replace(/^_|_$/g, '')         // trim
+    .replace(/\{(\w+)\}/g, "$1") // {petId} → petId
+    .replace(/[^a-zA-Z0-9]/g, "_") // non-alphanum → _
+    .replace(/_+/g, "_") // collapse
+    .replace(/^_|_$/g, ""); // trim
 
-  const parts = slug.split('_').filter(Boolean)
+  const parts = slug.split("_").filter(Boolean);
   const camel = parts
     .map((p, i) => (i === 0 ? p.toLowerCase() : p[0].toUpperCase() + p.slice(1).toLowerCase()))
-    .join('')
+    .join("");
 
-  return method.toLowerCase() + camel[0].toUpperCase() + camel.slice(1)
+  return method.toLowerCase() + camel[0].toUpperCase() + camel.slice(1);
 }
 
 /**
@@ -44,28 +44,28 @@ function extractParams(
   pathParams: OpenApiParameter[],
   operation: OpenApiOperation,
 ): Record<string, ParamLocation> {
-  const params: Record<string, ParamLocation> = {}
+  const params: Record<string, ParamLocation> = {};
 
   // Path-level parameters
   for (const param of pathParams) {
-    if (param.in === 'path' || param.in === 'query') {
-      params[param.name] = param.in
+    if (param.in === "path" || param.in === "query") {
+      params[param.name] = param.in;
     }
   }
 
   // Operation-level parameters (override path-level)
   for (const param of operation.parameters ?? []) {
-    if (param.in === 'path' || param.in === 'query') {
-      params[param.name] = param.in
+    if (param.in === "path" || param.in === "query") {
+      params[param.name] = param.in;
     }
   }
 
   // Request body → 'body' param
   if (operation.requestBody) {
-    params['body'] = 'body'
+    params["body"] = "body";
   }
 
-  return params
+  return params;
 }
 
 /**
@@ -75,32 +75,28 @@ export function extractOperations(
   spec: OpenApiSpec,
   opts: ExtractOptions = {},
 ): ExtractedOperation[] {
-  const operations: ExtractedOperation[] = []
-  const nameFn = opts.operationName ?? defaultOperationName
+  const operations: ExtractedOperation[] = [];
+  const nameFn = opts.operationName ?? defaultOperationName;
 
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
-    const pathParams = pathItem.parameters ?? []
+    const pathParams = pathItem.parameters ?? [];
 
     for (const method of HTTP_METHODS) {
-      const operation = pathItem[method]
-      if (!operation) continue
+      const operation = pathItem[method];
+      if (!operation) continue;
 
-      const operationName = nameFn(
-        method.toUpperCase(),
-        path,
-        operation.operationId,
-      )
+      const operationName = nameFn(method.toUpperCase(), path, operation.operationId);
 
       operations.push({
         operationName,
         entry: {
-          method: method.toUpperCase() as ManifestEntry['method'],
+          method: method.toUpperCase() as ManifestEntry["method"],
           path,
           params: extractParams(pathParams, operation),
         },
-      })
+      });
     }
   }
 
-  return operations
+  return operations;
 }

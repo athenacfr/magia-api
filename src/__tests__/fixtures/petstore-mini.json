@@ -77,7 +77,11 @@
       "get": {
         "operationId": "findPetsByStatus",
         "parameters": [
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["available", "pending", "sold"] } }
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["available", "pending", "sold"] }
+          }
         ],
         "responses": {
           "200": {

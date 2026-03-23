@@ -1,7 +1,7 @@
 // Public API
-export { defineConfig } from './config'
-export { createMagia } from './proxy'
-export { tanstackQuery } from './plugins/tanstack-query'
+export { defineConfig } from "./config";
+export { createMagia } from "./proxy";
+export { tanstackQuery } from "./plugins/tanstack-query";
 
 // Types — used in magia.gen.ts and user code
 export type {
@@ -30,4 +30,4 @@ export type {
   ManifestApi,
   ManifestEntry,
   ParamLocation,
-} from './types'
+} from "./types";
